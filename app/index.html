@@ -329,6 +329,7 @@
 <script src="watch_notify.js"></script><!-- 워치 알림: 다음 화장실 (없어도 앱 동작) -->
 <script src="voice_coach.js"></script><!-- 음성 코치 (없어도 앱 동작) -->
 <script src="course_gap.js"></script><!-- 코스 화장실 최대 간격 (없어도 앱 동작) -->
+<script src="poi_filter.js"></script><!-- 시설 켜고 끄기 (없어도 앱 동작) -->
 <script>
 (() => {
   const DATA = "data/";
@@ -887,6 +888,7 @@
       try { window.SafetyLayer?.init(map, state); } catch (e) { console.error("안전시설 레이어", e); }
       try { window.NightToilet?.init(map, state); } catch (e) { console.error("밤 안심 화장실", e); }
       try { window.CourseGap?.init(map, state); } catch (e) { console.error("코스 화장실 간격", e); }
+      try { window.PoiFilter?.init(map); } catch (e) { console.error("시설 켜고 끄기", e); }
 
       const q = new URLSearchParams(location.search).get("r");
       let last = null; try { last = localStorage.getItem("runnavi-region"); } catch (e) {}
