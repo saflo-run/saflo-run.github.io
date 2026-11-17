@@ -249,7 +249,7 @@
 <section class="screen" id="course" hidden>
   <header class="top">
     <button class="iconbtn glass" id="courseBack" aria-label="뒤로">‹</button>
-    <div class="course-head glass"><b>평지 추천 코스</b><small id="cRegion"></small></div>
+    <div class="course-head glass"><b id="cName">평지 추천 코스</b><small id="cRegion"></small></div>
   </header>
   <div class="cards">
     <div class="r">
@@ -325,6 +325,12 @@
 
 <script src="https://unpkg.com/maplibre-gl@4.7.1/dist/maplibre-gl.js"></script>
 <script src="safety.js"></script><!-- 안전시설 레이어 (없어도 앱 동작) -->
+<script src="night_toilet.js"></script><!-- 밤 안심 화장실 (없어도 앱 동작) -->
+<script src="watch_notify.js"></script><!-- 워치 알림: 다음 화장실 (없어도 앱 동작) -->
+<script src="voice_coach.js"></script><!-- 음성 코치 (없어도 앱 동작) -->
+<script src="course_gap.js"></script><!-- 코스 화장실 최대 간격 (없어도 앱 동작) -->
+<script src="poi_filter.js"></script><!-- 시설 켜고 끄기 (없어도 앱 동작) -->
+<script src="course_picker.js"></script><!-- 맞춤형 코스 추천 (없어도 앱 동작: 기본 코스 1개) -->
 <script>
 (() => {
   const DATA = "data/";
@@ -334,6 +340,7 @@
   const SLOPE = { 0: ["평지 <3%", "#2fbf71"], 1: ["완만 3~6%", "#9be15d"], 2: ["경사 6~10%", "#ffa94d"],
                   3: ["급경사 ≥10%", "#ff6b6b"], 8: ["다리·터널", "#868e96"], 9: ["정보 없음", "#5c636a"] };
   const RUN = { A: ["러닝 전용로", "#ff8a3d"], B: ["러닝 가능 길", "#5b8cff"] };
+  const nightOK = (t) => !window.NightToilet || window.NightToilet.ok(t);   // 밤 안심모드: 밤에 닫힌 화장실 제외
   const POI = { toilet: ["🚻", "#3ddc97", "화장실"], water: ["💧", "#4dabf7", "음수대"],
                 store: ["🏪", "#ffa94d", "편의점"], police: ["👮", "#b197fc", "경찰"] };
   const RUN_PACE_SEC = 360;            // 예상 시간 계산용 기본 페이스 6:00/km
@@ -410,7 +417,7 @@
     let minX = 180, minY = 90, maxX = -180, maxY = -90;
     for (const [x, y] of pts) { minX = Math.min(minX, x); maxX = Math.max(maxX, x); minY = Math.min(minY, y); maxY = Math.max(maxY, y); }
     const pad = m / 90000;
-    return state.toilets.filter((t) => t.ll[0] > minX - pad && t.ll[0] < maxX + pad && t.ll[1] > minY - pad && t.ll[1] < maxY + pad
+    return state.toilets.filter((t) => nightOK(t) && t.ll[0] > minX - pad && t.ll[0] < maxX + pad && t.ll[1] > minY - pad && t.ll[1] < maxY + pad
       && pts.some((p) => haversine(p, t.ll) <= m)).length;
   }
   // ---------- 워치 화면과 연동 (같은 브라우저의 다른 창/탭으로 실시간 전송) ----------
@@ -430,7 +437,7 @@
         m.here = r5(c);
         m.hereH = zoomed ? state.map.getBearing() : bearing(route[0], route[Math.min(route.length - 1, 8)]);
         m.hereLines = nearbyLines(c, 700, 1200);
-        m.hereToilets = state.toilets.filter((t) => haversine(t.ll, c) < 900).slice(0, 40).map((t) => r5(t.ll));
+        m.hereToilets = state.toilets.filter((t) => nightOK(t) && haversine(t.ll, c) < 900).slice(0, 40).map((t) => r5(t.ll));
       }
     }
     if (reg && reg.route) {                       // 워치 시작 화면용 코스 미리보기 + 주변 길
@@ -438,7 +445,7 @@
       for (const [x, y] of reg.route) { x0 = Math.min(x0, x); x1 = Math.max(x1, x); y0 = Math.min(y0, y); y1 = Math.max(y1, y); }
       const c = [(x0 + x1) / 2, (y0 + y1) / 2];
       m.course = thin(reg.route, 300);
-      m.courseToilets = state.toilets.filter((t) => reg.route.some((q, i) => i % 5 === 0 && haversine(q, t.ll) < 150)).map((t) => r5(t.ll));
+      m.courseToilets = state.toilets.filter((t) => nightOK(t) && reg.route.some((q, i) => i % 5 === 0 && haversine(q, t.ll) < 150)).map((t) => r5(t.ll));
       m.lines = nearbyLines(c, Math.min(1500, Math.max(haversine([x0, y0], [x1, y1]) * .65, 300)), 1500);
     }
     return m;
@@ -462,7 +469,7 @@
     if (force || now - (state.lastNearSend || 0) > 2500) {
       state.lastNearSend = now;
       m.lines = nearbyLines(state.pos, 700);
-      m.toilets = state.toilets.filter((t) => haversine(t.ll, state.pos) < 900).slice(0, 40).map((t) => r5(t.ll));
+      m.toilets = state.toilets.filter((t) => nightOK(t) && haversine(t.ll, state.pos) < 900).slice(0, 40).map((t) => r5(t.ll));
     }
     post(m);
   }
@@ -670,7 +677,7 @@
       map.getSource("run").setData({ type: "FeatureCollection", features: regs.flatMap((r) => r.lines) });
       map.getSource("poi").setData({ type: "FeatureCollection", features: regs.flatMap((r) => r.pois) });
       state.toilets = regs.flatMap((r) => r.pois.filter((p) => p.properties.t === "toilet")
-        .map((p) => ({ ll: p.geometry.coordinates, name: p.properties.n })));
+        .map((p) => ({ ll: p.geometry.coordinates, name: p.properties.n, g: p.properties.g })));
       map.setFilter("regions-cur", ["==", ["get", "code"], state.cur || ""]);
       window.SafetyLayer?.refresh();                                  // 안전시설 레이어
       if (state.screen === "home") renderHome();
@@ -708,6 +715,8 @@
       const km = reg.demo_m / 1000;
       $("courseName").textContent = `${p.label.split(" ").slice(1).join(" ")} 평지 코스 ${km.toFixed(1)}km`;
       $("courseInfo").textContent = `약 ${Math.round(km * RUN_PACE_SEC / 60)}분 · 화장실 ${toiletsNear(reg.route, 150)}곳 · 전용로·평지 위주`;
+      window.CourseGap?.home(reg);                                   // 화장실 최대 간격
+      window.CoursePicker?.home(reg);                                // 코스 N개 중에서 고르기
     } else {
       $("courseName").textContent = "추천 코스";
       $("courseInfo").textContent = p ? (reg ? "이 지역은 추천 코스가 없어요" : "코스 불러오는 중…") : "지도에서 지역을 누르면 추천 코스가 나와요";
@@ -725,7 +734,7 @@
   }
   function loadVisible() {
     const map = state.map;
-    if (state.screen !== "home" || map.getZoom() < DETAIL_ZOOM) return;
+    if (state.screen !== "home" || state.picking || map.getZoom() < DETAIL_ZOOM) return;
     const c = map.getCenter().toArray(), b = map.getBounds();
     const here = regionAt(c);
     if (here && here !== state.cur) { setCurrent(here, true); renderHome(); }
@@ -879,6 +888,10 @@
       const pe = document.createElement("div"); pe.className = "pin end";
       state.endPin = new maplibregl.Marker({ element: pe, opacityWhenCovered: "1" });
       try { window.SafetyLayer?.init(map, state); } catch (e) { console.error("안전시설 레이어", e); }
+      try { window.NightToilet?.init(map, state); } catch (e) { console.error("밤 안심 화장실", e); }
+      try { window.CourseGap?.init(map, state); } catch (e) { console.error("코스 화장실 간격", e); }
+      try { window.PoiFilter?.init(map); } catch (e) { console.error("시설 켜고 끄기", e); }
+      try { window.CoursePicker?.init(map, state, { openCourse, decode, show, loadRegion }); } catch (e) { console.error("코스 추천", e); }
 
       const q = new URLSearchParams(location.search).get("r");
       let last = null; try { last = localStorage.getItem("runnavi-region"); } catch (e) {}
@@ -890,7 +903,7 @@
     $("segSlope").onclick = () => setMode("slope");
     $("segRun").onclick = () => setMode("run");
     $("btnMode").onclick = () => { setMode(state.mode === "slope" ? "run" : "slope"); toast(state.mode === "slope" ? "길 색: 경사도" : "길 색: 러닝 전용로 / 가능 길", 1800); };
-    $("courseRow").onclick = openCourse;
+    $("courseRow").onclick = () => (window.CoursePicker ? window.CoursePicker.open() : openCourse());   // 코스 여러 개 → 조건 골라 추천
     $("courseBack").onclick = closeCourse;
     $("btnStart").onclick = startDemo;
     $("gpsRow").onclick = startGps;
@@ -918,19 +931,27 @@
   function clearCourse() {
     state.map.getSource("course").setData({ type: "FeatureCollection", features: [] });
     state.startPin.remove(); state.endPin.remove(); state.kmTag.remove();
+    window.CourseGap?.clear();
   }
   async function openCourse() {
     const reg = state.cur && await loadRegion(state.cur).catch(() => null);
     if (!reg || !reg.route) return toast("이 지역은 추천 코스가 없어요");
-    const p = state.byCode[state.cur], km = reg.demo_m / 1000;
+    const p = state.byCode[state.cur], km = Math.round(reg.demo_m / 100) / 10;   // 코스 이름과 같은 반올림
     $("cRegion").textContent = p.label;
     $("cDist").textContent = `${km.toFixed(1)} km`;
     $("cFlat").textContent = p.flat_pct != null ? `평지 ${p.flat_pct.toFixed(0)}% 지역` : "전용로·평지 위주";
     $("cTime").textContent = `6'00" 페이스로 약 ${Math.round(km * RUN_PACE_SEC / 60)}분`;
     $("cToilet").textContent = `${toiletsNear(reg.route, 150)}곳`;
-    window.SafetyLayer?.onCourse(state.cur);                          // 코스 안전 정보
+    $("cName").textContent = reg.courseName || "평지 추천 코스";
+    if (reg.course) {                                                 // 고른 코스: 그 코스의 평지 비율·밤 안전
+      const c = reg.course;
+      $("cFlat").textContent = `평지 ${c.f}% · 전용로 ${c.a}%`;
+      if (c.night != null) $("cTime").textContent += ` · 밤 안전 ${c.night}%`;
+    }
+    window.SafetyLayer?.onCourse(reg.course ? null : state.cur);      // 코스 안전 정보 (기본 코스 기준 자료)
     show("course");
     drawCourse(reg.route);
+    window.CourseGap?.course(reg);                                    // 화장실 없는 가장 긴 구간
     state.map.setPaintProperty("course-line", "line-opacity", 1);
     state.map.setPaintProperty("course-glow", "line-opacity", .35);
     state.kmTag.getElement().textContent = `${km.toFixed(1)} km`;
@@ -992,6 +1013,8 @@
     state.nextMark.remove(); state.nextShown = false;
     state.me.remove(); state.meShown = false;
     window.SafetyLayer?.onStop();
+    window.WatchNotify?.stop();
+    window.VoiceCoach?.stop();
   }
   function finish() {
     const sec = clockSec(), kind = state.nav;
@@ -1061,6 +1084,7 @@
     // 진행 방향 다음 화장실 (앞쪽 ±70° 안에서 가장 가까운 곳, 없으면 가장 가까운 곳)
     let best = null, fallback = null;
     for (const t of state.toilets) {
+      if (!nightOK(t)) continue;
       if (Math.abs(t.ll[1] - pos[1]) > .05 || Math.abs(t.ll[0] - pos[0]) > .06) continue;
       const d = haversine(pos, t.ll), rel = angDiff(state.heading, bearing(pos, t.ll));
       if (!fallback || d < fallback.d) fallback = { ...t, d, rel };
@@ -1074,6 +1098,8 @@
       if (!state.nextShown) { state.nextMark.addTo(map); state.nextShown = true; }
       $("nextDist").textContent = fmtDist(target.d);
       $("nextName").textContent = `🚻 ${best ? "앞쪽" : "뒤쪽"} 화장실 · ${target.name || "공중화장실"}`;
+      const nb = window.NightToilet?.badge(target); if (nb) $("nextName").insertAdjacentHTML("beforeend", nb);
+      if (!refreshOnly) window.WatchNotify?.update(target, !!best);              // 갤럭시 워치로 가는 알림
       $("nextEta").innerHTML = `약 ${Math.max(1, Math.round(target.d / 1000 * RUN_PACE_SEC / 60))}분<br>직선거리`;
       $("arrow").style.transform = `rotate(${target.rel}deg)`;
     } else {
@@ -1082,6 +1108,8 @@
       $("arrow").style.transform = "";
     }
     window.SafetyLayer?.onUpdate(pos, state.heading);                 // 앞 신호·가까운 24시간 경찰
+    if (!refreshOnly) window.VoiceCoach?.update({ pos, heading: state.heading, dist: state.dist, sec: clockSec(), target, ahead: !!best,
+                                                  region: state.cur, demo: state.nav === "demo" });   // 음성 코치
 
     const p = map.project(pos);
     const fs = map.queryRenderedFeatures([[p.x - 14, p.y - 14], [p.x + 14, p.y + 14]], { layers: ["run-inner"] });
