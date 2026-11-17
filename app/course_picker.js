@@ -2,13 +2,14 @@
  * 데이터: data/courses/<시군구코드>.json  ← running_map/08_courses.py 가 만듦
  *   courses[]: id, name, tag, p(성향), km(목표), m(실제 길이), a(전용로%), f(평지%), st(경사·급경사%), climb(오르막 m),
  *              t150(코스 150m 안 화장실), gap(화장실 최대 공백 m), night(밤 안전 길 %), start[경도,위도], poly(압축 좌표)
+ * 시설 접근 코스(팀 분석): data/course_compare/<시군구코드>.json  { original:{meters,flat,slopeCoverage,lit}, alternative:{…, route:[[경도,위도]…]} }
  * index.html 은 아래만 부른다 (이 파일이 없어도 앱 동작: 예전처럼 추천 코스 1개)
- *   init(map, state, api) · home(reg) · has(code) · open()
+ *   init(map, state, api) · home(reg) · has(code) · open() · prepare(reg) · compare(reg)
  */
 window.CoursePicker = (() => {
-  const BASE = "data/courses/";
+  const BASE = "data/courses/", CMP = "data/course_compare/";
   const LIME = "#c8f25b";
-  const S = { map: null, app: null, api: null, files: new Map(), data: {}, dist: 0, cond: new Set(), list: [], hi: null, panel: null };
+  const S = { map: null, app: null, api: null, files: new Map(), data: {}, cmpFiles: new Map(), cmp: {}, dist: 0, cond: new Set(), list: [], hi: null, panel: null };
   const COND = [
     ["flat", "평지 위주"], ["dedicated", "전용로 위주"], ["toilet", "화장실 1km 이내"], ["night", "밤 안심"], ["near", "지도 가운데에서 출발"],
   ];
@@ -48,7 +49,18 @@ window.CoursePicker = (() => {
       .cp-empty { text-align: center; color: var(--ink-2); font-size: 13px; padding: 18px 0; }
       .cp-note { font-size: 11px; color: var(--ink-3); margin: 2px 2px 8px; }
       .cp-go { width: 100%; height: 50px; border-radius: 16px; background: var(--lime); color: var(--lime-ink); font-weight: 800; font-size: 15px; margin-top: 4px; flex: none; }
-      .cp-go:disabled { opacity: .4; }`;
+      .cp-go:disabled { opacity: .4; }
+      .cp-alt { border: 2px solid #3ddc97; }
+      .cp-alt .rk { background: #3ddc97 !important; color: #0b1a12 !important; }
+      .cc-compare { grid-column: 1 / -1; padding: 10px 12px; }
+      .cc-compare h3 { margin: 0 0 6px; font-size: 13px; }
+      .cc-compare table { width: 100%; border-collapse: collapse; font-size: 11px; font-variant-numeric: tabular-nums; }
+      .cc-compare th, .cc-compare td { padding: 4px 2px; text-align: center; color: var(--ink-2); }
+      .cc-compare th:first-child { text-align: left; font-weight: 600; }
+      .cc-compare thead button { width: 100%; padding: 6px 2px; border-radius: 8px; background: var(--card-2); color: var(--ink); font-size: 11px; font-weight: 700; }
+      .cc-compare thead button[aria-pressed="true"] { background: var(--lime); color: var(--lime-ink); }
+      .cc-compare td.on { color: var(--ink); font-weight: 700; }
+      .cc-compare small { display: block; margin-top: 6px; font-size: 10px; color: var(--ink-3); line-height: 1.4; }`;
     document.head.appendChild(st);
   }
 
@@ -60,6 +72,71 @@ window.CoursePicker = (() => {
     return S.files.get(code);
   }
   const has = (code) => !!(S.data[code] && S.data[code].length);
+
+  // 팀 분석 '시설 접근 코스' (원래 추천 코스와 비교용)
+  function loadCmp(code) {
+    if (!S.cmpFiles.has(code)) S.cmpFiles.set(code, fetch(`${CMP}${code}.json`).then((r) => r.ok ? r.json() : null).then((d) => {
+      const a = d && d.alternative;
+      const ok = d && d.original && a && a.meters > 0 && Array.isArray(a.route) && a.route.length > 1
+        && a.route.every((q) => Array.isArray(q) && q.length === 2 && Math.abs(q[0]) <= 180 && Math.abs(q[1]) <= 90);
+      return (S.cmp[code] = ok ? d : null);
+    }).catch(() => (S.cmp[code] = null)));
+    return S.cmpFiles.get(code);
+  }
+
+  // ---------- 코스 바꾸기: 기존 추천 / 시설 접근 / 고른 코스 ----------
+  // 지역 데이터(reg)의 route·demo_m 을 바꾸면 코스 화면·START·워치·화장실 간격이 모두 그 코스를 씀
+  function variants(reg) {
+    const cmp = S.cmp[reg.code], v = [];
+    v.push({ key: "base", label: "기존 추천", name: cmp ? "기존 추천 코스" : null, route: reg.route0, m: reg.demo_m0,
+             flat: cmp ? cmp.original.flat : null, cov: cmp ? cmp.original.slopeCoverage : null, lit: cmp ? cmp.original.lit : null });
+    if (cmp) v.push({ key: "alt", label: "시설 접근", name: "시설 접근 코스", route: cmp.alternative.route, m: cmp.alternative.meters,
+                      flat: cmp.alternative.flat, cov: cmp.alternative.slopeCoverage, lit: cmp.alternative.lit });
+    if (reg.pick) v.push({ key: "pick", label: "고른 코스", name: reg.pick.name, route: reg.pickRoute, m: reg.pick.m,
+                           flat: reg.pick.f, cov: null, lit: null, course: reg.pick });
+    return v;
+  }
+  function apply(reg, v) {
+    reg.route = v.route; reg.demo_m = v.m; reg.variant = v.key;
+    reg.courseName = v.name; reg.course = v.course || null; reg.courseId = v.key === "pick" ? reg.pick.id : v.key;
+  }
+  // 코스 화면을 열기 전에: 원래 코스를 보관하고 시설 접근 코스를 불러옴
+  async function prepare(reg) {
+    if (!reg) return;
+    if (!reg.route0) { reg.route0 = reg.route; reg.demo_m0 = reg.demo_m; reg.variant = "base"; }
+    await loadCmp(reg.code);
+  }
+  // 코스 화면 카드 위에 비교표
+  function compare(reg) {
+    document.querySelector(".cc-compare")?.remove();
+    const vs = variants(reg);
+    if (vs.length < 2) return;
+    const cards = document.querySelector("#course .cards"); if (!cards) return;
+    const gaps = vs.map((v) => window.CourseGap?.compute({ ...reg, route: v.route }) || null);
+    const pct = (n) => n == null ? "–" : `${n}%`;
+    const rows = [
+      ["거리", (v) => `${(v.m / 1000).toFixed(1)}km`],
+      ["평지 비율", (v) => pct(v.flat)],
+      ["화장실 최대 간격 · 낮", (v, i) => gaps[i] ? fmt(gaps[i].day.max) : "–"],
+      ["화장실 최대 간격 · 밤", (v, i) => gaps[i] ? fmt(gaps[i].night.max) : "–"],
+      ["보안등·CCTV 인접", (v) => pct(v.lit)],
+    ];
+    if (vs.some((v) => v.cov != null)) rows.splice(2, 0, ["경사 확인 비율", (v) => pct(v.cov)]);
+    const el = document.createElement("div");
+    el.className = "cc cc-compare";
+    el.innerHTML = `<h3>코스 비교 · 눌러서 바꾸기</h3><table>
+      <thead><tr><th></th>${vs.map((v) => `<th><button data-v="${v.key}" aria-pressed="${reg.variant === v.key}">${v.label}</button></th>`).join("")}</tr></thead>
+      <tbody>${rows.map(([lab, f]) => `<tr><th scope="row">${lab}</th>${vs.map((v, i) => `<td class="${reg.variant === v.key ? "on" : ""}">${f(v, i)}</td>`).join("")}</tr>`).join("")}</tbody></table>
+      <small>출발점·길이가 다른 코스예요. 화장실은 코스 150m 안, 보안등·CCTV는 50m 기준이에요. 시설 접근 코스는 팀 분석 결과예요.</small>`;
+    el.addEventListener("click", (e) => {
+      const b = e.target.closest("button[data-v]"); if (!b) return;
+      const v = vs.find((x) => x.key === b.dataset.v);
+      if (v && v.key !== reg.variant) { apply(reg, v); S.api.openCourse(); }
+    });
+    cards.prepend(el);
+    const cur = vs.find((v) => v.key === reg.variant);
+    if (cur && cur.key === "alt" && cur.flat != null) document.getElementById("cFlat").textContent = `평지 ${cur.flat}% · 시설 접근`;
+  }
 
   // ---------- 점수 ----------
   // 고른 조건마다 0~1 점수를 더함. '화장실 1km 이내'·'밤 안심'은 맞는 코스가 있으면 그것만 남김
@@ -113,6 +190,7 @@ window.CoursePicker = (() => {
       if (b.dataset.a === "go") return choose(S.list.find((x) => x.id === S.hi));
       if (b.dataset.d != null) { S.dist = +b.dataset.d; refresh(); return; }
       if (b.dataset.c) { S.cond.has(b.dataset.c) ? S.cond.delete(b.dataset.c) : S.cond.add(b.dataset.c); refresh(); return; }
+      if (b.dataset.alt) return chooseAlt();
       if (b.dataset.id) { highlight(+b.dataset.id, true); }
     });
     S.panel = el;
@@ -137,11 +215,16 @@ window.CoursePicker = (() => {
     const { list, note } = rank(all);
     S.list = list;
     q("note").hidden = !note.length; q("note").textContent = note.join(" · ");
-    q("list").innerHTML = list.length ? list.map((x, i) => `
+    const cmp = S.cmp[S.app.cur], alt = cmp && cmp.alternative;
+    const altCard = alt ? `
+      <button class="cp-card cp-alt" data-alt="1" aria-current="false">
+        <div class="t"><span class="rk">★</span><b>시설 접근 코스 · 팀 분석</b><span class="km">${(alt.meters / 1000).toFixed(1)}km</span></div>
+        <div class="cp-badges"><span class="ok">평지 ${alt.flat}%</span><span>보안등·CCTV ${alt.lit}%</span><span>화장실·밝은 길 우선</span></div></button>` : "";
+    q("list").innerHTML = altCard + (list.length ? list.map((x, i) => `
       <button class="cp-card" data-id="${x.id}" aria-current="false">
         <div class="t"><span class="rk">${i + 1}</span><b>${x.name}</b><span class="km">약 ${Math.round(x.m / 1000 * 6)}분</span></div>
         <div class="cp-badges">${badges(x)}</div></button>`).join("")
-      : `<div class="cp-empty">이 거리에는 코스가 없어요. 다른 거리를 골라 보세요.</div>`;
+      : `<div class="cp-empty">이 거리에는 코스가 없어요. 다른 거리를 골라 보세요.</div>`);
     highlight(list[0] ? list[0].id : null, false);
     pad();                                                   // 정보창 높이만큼 지도 여백을 먼저 잡고
     drawLines();                                             // 그 안에 코스가 다 보이게 맞춤
@@ -171,9 +254,9 @@ window.CoursePicker = (() => {
 
   async function open() {
     const code = S.app.cur; if (!code) return;
-    await load(code);
-    if (!has(code)) return S.api.openCourse();               // 코스 파일이 없으면 예전처럼 기본 코스
-    q("region").textContent = `${S.app.byCode[code].label} · 코스 ${S.data[code].length}개 중에서`;
+    await Promise.all([load(code), loadCmp(code)]);
+    if (!has(code) && !S.cmp[code]) return S.api.openCourse();   // 코스 파일이 없으면 예전처럼 기본 코스
+    q("region").textContent = `${S.app.byCode[code].label} · 코스 ${(S.data[code] || []).length}개 중에서`;
     document.getElementById("home").hidden = true;
     S.panel.hidden = false; S.app.picking = true;
     S.map.setLayoutProperty("cp-line", "visibility", "visible");
@@ -192,9 +275,19 @@ window.CoursePicker = (() => {
     if (!x) return;
     const reg = await S.api.loadRegion(S.app.cur).catch(() => null);
     if (!reg) return;
-    if (!reg.route0) { reg.route0 = reg.route; reg.demo_m0 = reg.demo_m; }
-    reg.route = S.api.decode(x.poly); reg.demo_m = x.m;
-    reg.courseId = x.id; reg.courseName = x.name; reg.course = x;
+    await prepare(reg);
+    reg.pick = x; reg.pickRoute = S.api.decode(x.poly);
+    apply(reg, variants(reg).find((v) => v.key === "pick"));
+    close(true);
+    S.api.openCourse();
+  }
+  async function chooseAlt() {
+    const reg = await S.api.loadRegion(S.app.cur).catch(() => null);
+    if (!reg) return;
+    await prepare(reg);
+    const v = variants(reg).find((x) => x.key === "alt");
+    if (!v) return;
+    apply(reg, v);
     close(true);
     S.api.openCourse();
   }
@@ -223,5 +316,5 @@ window.CoursePicker = (() => {
     map.on("mouseleave", "cp-line", () => { map.getCanvas().style.cursor = ""; });
     window.addEventListener("resize", pad);
   }
-  return { init, home, has, open, load };
+  return { init, home, has, open, load, prepare, compare };
 })();

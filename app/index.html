@@ -936,6 +936,7 @@
   async function openCourse() {
     const reg = state.cur && await loadRegion(state.cur).catch(() => null);
     if (!reg || !reg.route) return toast("이 지역은 추천 코스가 없어요");
+    await window.CoursePicker?.prepare(reg);                          // 원래 코스 보관 + 시설 접근 코스 불러오기
     const p = state.byCode[state.cur], km = Math.round(reg.demo_m / 100) / 10;   // 코스 이름과 같은 반올림
     $("cRegion").textContent = p.label;
     $("cDist").textContent = `${km.toFixed(1)} km`;
@@ -948,10 +949,11 @@
       $("cFlat").textContent = `평지 ${c.f}% · 전용로 ${c.a}%`;
       if (c.night != null) $("cTime").textContent += ` · 밤 안전 ${c.night}%`;
     }
-    window.SafetyLayer?.onCourse(reg.course ? null : state.cur);      // 코스 안전 정보 (기본 코스 기준 자료)
+    window.SafetyLayer?.onCourse(reg.variant && reg.variant !== "base" ? null : state.cur);   // 코스 안전 정보 (기존 추천 코스 기준 자료)
     show("course");
     drawCourse(reg.route);
     window.CourseGap?.course(reg);                                    // 화장실 없는 가장 긴 구간
+    window.CoursePicker?.compare(reg);                                // 기존 추천 / 시설 접근 / 고른 코스 비교표
     state.map.setPaintProperty("course-line", "line-opacity", 1);
     state.map.setPaintProperty("course-glow", "line-opacity", .35);
     state.kmTag.getElement().textContent = `${km.toFixed(1)} km`;

@@ -8,7 +8,7 @@
  */
 window.CourseGap = (() => {
   const NEAR_M = 150, NIGHT = new Set(["초록", "노랑", "빨강"]);
-  const S = { map: null, app: null, cache: new Map(), tag: null };
+  const S = { map: null, app: null, cache: new WeakMap(), tag: null, courseReg: null, onChange: null };
 
   const rad = (d) => d * Math.PI / 180;
   const hav = (a, b) => {
@@ -30,33 +30,54 @@ window.CourseGap = (() => {
   }
 
   function compute(reg) {
-    if (!reg || !reg.route || reg.route.length < 2) return null;
-    const ck = `${reg.code}:${reg.courseId || 0}`;                     // 고른 코스마다 따로 계산
-    if (S.cache.has(ck)) return S.cache.get(ck);
+    if (!S.app || !reg || !reg.route || reg.route.length < 2) return null;
+    const cached = S.cache.get(reg.route);
+    if (cached?.toilets === S.app.toilets) return cached.result;
     const route = reg.route, cum = [0];
     for (let i = 1; i < route.length; i++) cum.push(cum.at(-1) + hav(route.at(i - 1), route.at(i)));
     let x0 = 180, x1 = -180, y0 = 90, y1 = -90;
     for (const [x, y] of route) { x0 = Math.min(x0, x); x1 = Math.max(x1, x); y0 = Math.min(y0, y); y1 = Math.max(y1, y); }
-    const pad = NEAR_M / 90000, day = [], night = [];
+    const padY = NEAR_M / 110000;
+    const padX = padY / Math.max(.1, Math.cos(rad((y0 + y1) / 2)));
+    const day = [], night = [];
     for (const t of S.app.toilets || []) {
       const [x, y] = t.ll;
-      if (x < x0 - pad || x > x1 + pad || y < y0 - pad || y > y1 + pad) continue;
-      let bi = 0, bd = Infinity;
-      route.forEach((p, i) => { const d = hav(p, t.ll); if (d < bd) { bd = d; bi = i; } });
-      if (bd > NEAR_M) continue;
-      day.push(cum.at(bi));
-      if (NIGHT.has(t.g)) night.push(cum.at(bi));
+      if (x < x0 - padX || x > x1 + padX || y < y0 - padY || y > y1 + padY) continue;
+      // 화장실을 코스 선분에 투영: 꼭짓점이 적은 대안 코스에서도 같은 기준 사용.
+      let best = Infinity, along = 0;
+      const scaleX = 111320 * Math.cos(rad(y)), scaleY = 111320;
+      for (let i = 1; i < route.length; i++) {
+        const a = route[i - 1], b = route[i];
+        const ax = (a[0] - x) * scaleX, ay = (a[1] - y) * scaleY;
+        const dx = (b[0] - a[0]) * scaleX, dy = (b[1] - a[1]) * scaleY;
+        const t = Math.max(0, Math.min(1, -(ax * dx + ay * dy) / (dx * dx + dy * dy || 1)));
+        const d = Math.hypot(ax + t * dx, ay + t * dy);
+        if (d < best) { best = d; along = cum[i - 1] + t * (cum[i] - cum[i - 1]); }
+      }
+      if (best > NEAR_M) continue;
+      day.push(along);
+      if (NIGHT.has(t.g)) night.push(along);
     }
     day.sort((a, b) => a - b); night.sort((a, b) => a - b);
     const r = { L: cum.at(-1), cum, day: gapOf(route, cum, day), night: gapOf(route, cum, night) };
-    if ((S.app.toilets || []).length) S.cache.set(ck, r);
+    if ((S.app.toilets || []).length) S.cache.set(reg.route, { toilets: S.app.toilets, result: r });
     return r;
   }
 
   // 코스에서 출발점 기준 a~b(m) 구간의 좌표 (한 바퀴 코스면 끝을 넘어 처음으로 이어짐)
   function slice(route, cum, a, b) {
     const L = cum.at(-1), out = [];
-    const take = (lo, hi) => route.forEach((p, i) => { const c = cum.at(i); if (c >= lo && c <= hi) out.push(p); });
+    const at = (d) => {
+      let i = 1;
+      while (i < cum.length - 1 && cum[i] < d) i++;
+      const t = Math.max(0, Math.min(1, (d - cum[i - 1]) / (cum[i] - cum[i - 1] || 1)));
+      return route[i - 1].map((v, k) => v + t * (route[i][k] - v));
+    };
+    const take = (lo, hi) => {
+      out.push(at(lo));
+      route.forEach((p, i) => { if (cum[i] > lo && cum[i] < hi) out.push(p); });
+      out.push(at(hi));
+    };
     if (b <= L) take(a, b); else { take(a, L); take(0, b - L); }
     return out.length >= 2 ? out : null;
   }
@@ -69,8 +90,11 @@ window.CourseGap = (() => {
   }
 
   function course(reg) {
+    S.courseReg = reg;
     const r = compute(reg);
     if (!r) return;
+    const count = document.getElementById("cToilet");
+    if (count) count.textContent = `${(nightOn() ? r.night : r.day).n}곳`;
     const card = document.getElementById("cToilet")?.parentElement?.querySelector("small");
     if (card) card.innerHTML = `코스 150m 안<br>최대 간격 ${km(r.day.max)} · 밤 ${km(r.night.max)}`;
     const g = nightOn() ? r.night : r.day, seg = slice(reg.route, r.cum, g.a, g.b);
@@ -85,8 +109,8 @@ window.CourseGap = (() => {
     S.marker?.remove();
   }
 
-  function init(map, app) {
-    S.map = map; S.app = app;
+  function init(map, app, onChange) {
+    S.map = map; S.app = app; S.onChange = onChange;
     map.addSource("cg-gap", { type: "geojson", data: { type: "FeatureCollection", features: [] } });
     map.addLayer({ id: "cg-gap", type: "line", source: "cg-gap",
       layout: { "line-cap": "round", "line-join": "round" },
@@ -97,8 +121,9 @@ window.CourseGap = (() => {
     // 안심모드를 켜고 끄면 코스 화면의 점선도 낮/밤 기준으로 다시 그림
     const row = document.querySelector(".sf-row");
     if (row) new MutationObserver(() => {
-      const reg = app.cur && app.loaded?.get(app.cur);
+      const reg = S.courseReg;
       if (app.screen === "course" && reg) course(reg);
+      S.onChange?.();
     }).observe(row, { attributes: true, attributeFilter: ["aria-pressed"] });
   }
 
