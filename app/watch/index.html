@@ -168,6 +168,15 @@
   .alert span { font-size: .9em; font-weight: 700; margin-top: .3em; }
   .alert .buzz { font-size: .7em; font-weight: 700; opacity: .65; margin-top: .9em; letter-spacing: .1em; }
 
+  /* 커뮤니티 응원·알림 */
+  .social { position: absolute; inset: 0; z-index: 11; background: #0b0c0d; display: flex; flex-direction: column; align-items: center;
+    justify-content: center; text-align: center; padding: 0 16%; border: 3px solid var(--lime); border-radius: 50%; animation: pop .45s ease-out both; }
+  .social.alertk { border-color: #ffb547; }
+  .social .si { font-size: 2em; } .social small { font-size: .75em; color: var(--ink-2); font-weight: 700; margin-top: .3em; }
+  .social p { font-size: 1.05em; font-weight: 700; line-height: 1.3; margin: .25em 0 .7em; word-break: keep-all; }
+  .social .rp { display: flex; gap: 6px; }
+  .social .rp button { font-size: .8em; font-weight: 800; border-radius: 99px; padding: .55em .8em; background: var(--lime); color: var(--lime-ink); }
+  .social .rp button.g { background: #24272b; color: var(--ink); }
   .wait p { font-size: .85em; color: var(--ink-2); margin: .6em 0 1em; max-width: 70%; line-height: 1.5; }
   .bar { display: flex; gap: 8px; flex-wrap: wrap; justify-content: center; }
   .bar button, .bar a { font-size: 13px; font-weight: 600; color: var(--ink-2); background: #17191b; border: 1px solid #2a2d31;
@@ -312,6 +321,17 @@
     <b class="num" id="aDist">300m</b>
     <span id="aTx">앞쪽에 화장실이 있어요</span>
     <div class="buzz">· 진동 ·</div>
+  </div>
+
+  <!-- 커뮤니티: 받은 응원 / 길·시설 알림 -->
+  <div class="social" id="social" hidden role="alert">
+    <div class="si" id="sIcon">👏</div>
+    <small id="sFrom"></small>
+    <p id="sText"></p>
+    <div class="rp" id="sReply">
+      <button data-r="고마워요 🙌">🙌 고마워요</button><button data-r="같이 화이팅 💪">💪 화이팅</button>
+    </div>
+    <div class="rp" id="sOkWrap"><button class="g" id="sOk">확인</button></div>
   </div>
 
 </div></div>
@@ -520,6 +540,8 @@
         $("tDist").textContent = "–"; $("tName").textContent = "5km 안에 화장실 정보가 없어요"; $("tArrow").style.transform = "";
       }
       drawMap();
+    } else if (m.type === "social") {
+      social(m);
     } else if (m.type === "done") {
       S.lastDone = m;
       show("done");
@@ -529,6 +551,24 @@
       if (m.steps) $("dSteps").textContent = `${m.steps.toLocaleString()}걸음${m.cad ? ` · 평균 ${m.cad}/분` : ""}`;
     }
   }
+  // ---- 커뮤니티: 휴대폰이 받은 응원·알림을 워치에 띄우고, 버튼으로 답장 ----
+  function social(m) {
+    const cheer = m.kind === "cheer";
+    $("social").classList.toggle("alertk", !cheer);
+    $("sIcon").textContent = cheer ? "👏" : "📢";
+    $("sFrom").textContent = cheer ? `${m.from}님의 응원` : `${m.from}님 알림`;
+    $("sText").textContent = m.text;
+    $("sReply").hidden = !cheer; $("sOkWrap").hidden = cheer;
+    S.social = m; $("social").hidden = false;
+    try { navigator.vibrate && navigator.vibrate(cheer ? [120, 80, 120, 80, 120] : [300]); } catch (e) {}
+    clearTimeout(S.socialT); S.socialT = setTimeout(() => ($("social").hidden = true), 12000);
+  }
+  $("sReply").addEventListener("click", (e) => {
+    const b = e.target.closest("button"); if (!b || !S.social) return;
+    send("reply", { text: b.dataset.r, to: S.social.fromUid, toNick: S.social.from });
+    $("social").hidden = true;
+  });
+  $("sOk").onclick = () => ($("social").hidden = true);
   if (bc) bc.onmessage = (e) => e.data && e.data.type && onMsg(e.data);
 
   // ---- 연결 확인 ----
