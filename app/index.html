@@ -150,6 +150,9 @@
   .perm-card h3 { margin: 0 0 8px; font-size: 19px; }
   .perm-card p { margin: 0 0 18px; color: var(--ink-2); font-size: 14px; line-height: 1.6; text-align: left; }
   .perm-card p b { color: var(--ink); }
+  .bigbtn.alt { background: var(--card-2); color: var(--ink); margin-top: 8px; }
+  .stepline { text-align: center; font-size: 12px; color: var(--ink-2); margin: -6px 0 12px; }
+  .stepline b { color: var(--lime); }
   .perm-no { width: 100%; height: 44px; margin-top: 6px; color: var(--ink-2); font-weight: 600; }
 
   /* ---- 카운트다운 / 알림 ---- */
@@ -258,7 +261,7 @@
     </div>
     <div class="r b">
       <div class="cc"><div class="ico">🚻</div><b id="cToilet">–</b><small>코스 150m 안 화장실</small></div>
-      <button class="start" id="btnStart">START<small>4배속 미리 달리기</small></button>
+      <button class="start" id="btnStart">START<small id="startSub">4배속 미리 달리기</small></button>
     </div>
   </div>
 </section>
@@ -283,6 +286,7 @@
       <div><b class="num" id="sClimb">0</b><small>오르막 m</small></div>
     </div>
     <div class="roadline"><span class="dot" id="roadChip"></span><span id="roadTxt">–</span></div>
+    <div class="stepline" id="stepLine" hidden>👟 걸음 <b class="num" id="stepN">0</b> · 케이던스 <b class="num" id="stepCad">–</b>/분</div>
     <div class="controls">
       <button class="ctl" id="btnMode" aria-label="길 색 바꾸기">◐</button>
       <button class="pause" id="btnPause" aria-label="일시정지">
@@ -309,6 +313,16 @@
   </div>
 </section>
 
+<!-- 달리는 방법 고르기 (동작 센서가 있는 휴대폰) -->
+<div class="perm" id="modeSheet" hidden role="dialog" aria-modal="true" aria-labelledby="modeTitle">
+  <div class="perm-card">
+    <h3 id="modeTitle">어떻게 달릴까요?</h3>
+    <p>휴대폰을 들고 달리거나 제자리에서 뛰면 <b>걸음을 감지해서</b> 코스를 따라 앞으로 가요. 한 걸음에 약 1m예요.</p>
+    <button class="bigbtn" id="modeSteps">👟 걸음 감지로 달리기</button>
+    <button class="bigbtn alt" id="modeDemo">⏩ 4배속 미리 달리기</button>
+    <button class="perm-no" id="modeNo">취소</button>
+  </div>
+</div>
 <!-- 위치 권한 안내 -->
 <div class="perm" id="perm" hidden role="dialog" aria-modal="true" aria-labelledby="permTitle">
   <div class="perm-card">
@@ -467,7 +481,7 @@
     const now = performance.now(), sec = clockSec();
     const m = { type: "tick", kind: state.nav, paused: state.paused, time: sec, dist: state.dist, climb: state.climb,
       pace: state.dist > 30 ? sec / (state.dist / 1000) : null, pos: r5(state.pos), heading: state.camBearing,
-      target: state.target || null, progress: state.nav === "demo" && state.demoTotal ? state.demoS / state.demoTotal : null };
+      target: state.target || null, progress: (state.nav === "demo" || state.nav === "steps") && state.demoTotal ? state.demoS / state.demoTotal : null };
     if (force || now - (state.lastTraceSend || 0) > 1000) { state.lastTraceSend = now; m.trace = thin(state.trace, 400); }
     if (force || now - (state.lastNearSend || 0) > 2500) {
       state.lastNearSend = now;
@@ -914,7 +928,15 @@
     $("btnMode").onclick = () => { setMode(state.mode === "slope" ? "run" : "slope"); toast(state.mode === "slope" ? "길 색: 경사도" : "길 색: 러닝 전용로 / 가능 길", 1800); };
     $("courseRow").onclick = () => (window.CoursePicker ? window.CoursePicker.open() : openCourse());   // 코스 여러 개 → 조건 골라 추천
     $("courseBack").onclick = closeCourse;
-    $("btnStart").onclick = startDemo;
+    $("btnStart").onclick = () => (motionCapable() ? ($("modeSheet").hidden = false) : startDemo("demo"));
+    $("modeSteps").onclick = async () => {                          // 걸음 감지: 아이폰은 이 누름 안에서 센서 허용을 물어봐야 함
+      $("modeSheet").hidden = true;
+      if (await askMotion()) startDemo("steps");
+      else { toast("동작 센서를 쓸 수 없어 4배속 미리 달리기로 시작해요", 4000); startDemo("demo"); }
+    };
+    $("modeDemo").onclick = () => { $("modeSheet").hidden = true; startDemo("demo"); };
+    $("modeNo").onclick = () => { $("modeSheet").hidden = true; };
+    if (motionCapable()) $("startSub").textContent = "걸음 감지 · 미리 달리기";
     $("gpsRow").onclick = startGps;
     $("btnPause").onclick = () => setPaused(!state.paused);
     $("btnStop").onclick = () => {
@@ -1020,7 +1042,7 @@
   }
   function stopTracking() {
     if (state.watchId != null) navigator.geolocation.clearWatch(state.watchId);
-    state.watchId = null; cancelAnimationFrame(state.raf); clearInterval(state.clockTimer); clearInterval(state.demoTimer);
+    state.watchId = null; cancelAnimationFrame(state.raf); clearInterval(state.clockTimer); clearInterval(state.demoTimer); stopMotion();
     state.nextMark.remove(); state.nextShown = false;
     state.me.remove(); state.meShown = false;
     window.SafetyLayer?.onStop();
@@ -1036,7 +1058,7 @@
     $("dPace").textContent = fmtPace(sec / (state.dist / 1000));
     $("dClimb").innerHTML = `${Math.round(state.climb)}<em>m</em>`;
     $("dToilet").innerHTML = `${toiletsNear(state.trace, 80)}<em>곳</em>`;
-    $("dWhen").textContent = `${kind === "demo" ? "데모 러닝" : "러닝"} 완료 · ${state.cur ? state.byCode[state.cur].label : ""}`;
+    $("dWhen").textContent = `${kind === "demo" ? "데모 러닝" : kind === "steps" ? "걸음 감지 러닝" : "러닝"} 완료 · ${state.cur ? state.byCode[state.cur].label : ""}`;
     state.lastDone = { type: "done", dist: state.dist, time: sec, pace: sec / (state.dist / 1000), climb: state.climb,
                        toilets: toiletsNear(state.trace, 80), trace: thin(state.trace, 400) };
     post(state.lastDone);
@@ -1140,7 +1162,49 @@
   }
 
   // ---------- 데모 (추천 코스를 4배속으로) ----------
-  async function startDemo() {
+  // ---------- 걸음 감지 (휴대폰 동작 센서) ----------
+  // 가속도 크기에서 중력을 빼고, 위로 솟았다 꺾이는 순간(봉우리)을 한 걸음으로 셈. 걸음 사이는 최소 0.26초
+  const STRIDE_M = 1.0, STEP_TH = 2.0;
+  const M = { on: false, cb: null, g: 9.8, v: 0, prev: 0, rising: false, last: 0, n: 0, times: [], got: false };
+  const motionCapable = () => "DeviceMotionEvent" in window && (navigator.maxTouchPoints || 0) > 0;
+  async function askMotion() {
+    const ios = /iPhone|iPad|iPod/i.test(navigator.userAgent) || (navigator.platform === "MacIntel" && navigator.maxTouchPoints > 1);
+    try {
+      if (typeof DeviceMotionEvent.requestPermission === "function") {
+        const r = await DeviceMotionEvent.requestPermission();
+        if (r === "granted") return true;
+        return !ios;                                  // 아이폰은 허용해야만 신호가 옴. 안드로이드는 그냥 들어 봄
+      }
+      return true;
+    } catch (e) { return !ios; }
+  }
+  function onMotion(e) {
+    const a = e.accelerationIncludingGravity;
+    if (!a || a.x == null) return;
+    M.got = true;
+    const mag = Math.hypot(a.x, a.y, a.z);
+    M.g = M.g * 0.95 + mag * 0.05;                   // 천천히 따라가는 값 = 중력
+    const v = M.v * 0.6 + (mag - M.g) * 0.4;         // 흔들림만 남기고 살짝 부드럽게
+    const now = performance.now();
+    if (v < M.prev && M.rising && M.prev > STEP_TH && now - M.last > 260) {
+      M.last = now; M.n++; M.times.push(now); M.rising = false;
+      M.cb && M.cb(now);
+    }
+    if (v > M.prev) M.rising = true;
+    M.prev = v; M.v = v;
+  }
+  function startMotion(cb) {
+    Object.assign(M, { on: true, cb, g: 9.8, v: 0, prev: 0, rising: false, last: 0, n: 0, times: [], got: false });
+    window.addEventListener("devicemotion", onMotion);
+  }
+  function stopMotion() { M.on = false; window.removeEventListener("devicemotion", onMotion); }
+  function cadence() {
+    const now = performance.now();
+    M.times = M.times.filter((t) => now - t < 10000);
+    return M.times.length >= 4 ? Math.round((M.times.length - 1) / ((M.times.at(-1) - M.times[0]) / 60000)) : null;
+  }
+
+  async function startDemo(mode = "demo") {
     const reg = state.cur && await loadRegion(state.cur).catch(() => null);
     if (!reg || !reg.route) return toast("이 지역은 추천 코스가 없어요");
     const route = reg.route, cum = [0];
@@ -1158,11 +1222,27 @@
     await countdown();
     drawCourse(route);
     state.courseThin = thin(route, 400); state.demoS = 0; state.demoTotal = total;
-    beginRun("demo");
-    let s = 0, last = performance.now();
+    beginRun(mode);
+    let s = 0, last = performance.now(), target = 0;
+    $("stepLine").hidden = mode !== "steps";
+    if (mode === "steps") {                           // 한 걸음마다 목표 지점을 1m씩 앞으로
+      $("stepN").textContent = "0"; $("stepCad").textContent = "–";
+      startMotion(() => {
+        if (state.paused) return;
+        target += STRIDE_M;
+        $("stepN").textContent = M.n; $("stepCad").textContent = cadence() ?? "–";
+      });
+      toast("휴대폰을 들고 달리거나 제자리에서 뛰어 보세요", 4000);
+      setTimeout(() => {
+        if (state.nav === "steps" && !M.got) toast("동작 센서 신호가 없어요. 브라우저 설정에서 동작 센서를 허용해 주세요", 6000);
+        else if (state.nav === "steps" && M.n === 0) toast("걸음이 안 잡혀요. 조금 더 크게 흔들거나 뛰어 보세요", 4000);
+      }, 6000);
+    }
     const step = (now) => {
-      if (state.nav !== "demo") return;
-      if (!state.paused) s += DEMO_SPEED * (now - last) / 1000;
+      if (state.nav !== mode) return;
+      const dt = (now - last) / 1000;
+      if (mode === "demo" && !state.paused) s += DEMO_SPEED * dt;
+      if (mode === "steps") s += (target - s) * Math.min(1, dt * 3);   // 걸음 사이를 부드럽게 이어서 움직임
       state.demoS = Math.min(s, total);
       last = now;
       if (s >= total) { update(at(total), state.heading, now); toast(`코스 완주! ${(total / 1000).toFixed(1)}km`); return finish(); }
@@ -1173,11 +1253,11 @@
     // 휴대폰 화면이 다른 창(워치 창)에 가려지면 브라우저가 화면 그리기를 멈춰서 데모가 멈춤 → 가려진 동안에는 타이머로 진행
     clearInterval(state.demoTimer);
     state.demoTimer = setInterval(() => {
-      if (state.nav !== "demo") return clearInterval(state.demoTimer);
+      if (state.nav !== mode) return clearInterval(state.demoTimer);
       if (document.hidden) step(performance.now());
     }, 250);
     document.addEventListener("visibilitychange", function wake() {
-      if (state.nav !== "demo") return document.removeEventListener("visibilitychange", wake);
+      if (state.nav !== mode) return document.removeEventListener("visibilitychange", wake);
       if (!document.hidden) { cancelAnimationFrame(state.raf); state.raf = requestAnimationFrame(step); }
     });
   }
