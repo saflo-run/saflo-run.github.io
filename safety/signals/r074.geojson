@@ -1,0 +1,1 @@
+{"type":"FeatureCollection","name":"signals_r074","features":[{"type":"Feature","properties":{"layer":"signal","is_pedestrian":false,"has_countdown":false,"night_blink":false},"geometry":{"type":"Point","coordinates":[129.336381,35.670191]}}]}

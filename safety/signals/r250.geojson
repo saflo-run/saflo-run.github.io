@@ -1,0 +1,1 @@
+{"type":"FeatureCollection","name":"signals_r250","features":[{"type":"Feature","properties":{"layer":"crosswalk","has_ped_signal":true,"signal_info":"recorded","green_sec":null,"red_sec":null,"expected_wait_sec":33.8},"geometry":{"type":"Point","coordinates":[128.82371,35.101905]}}]}
