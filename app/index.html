@@ -3,11 +3,11 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, user-scalable=no">
-<title>러닝 내비</title>
+<title>SAFLO</title>
 <meta name="theme-color" content="#0e0f11">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-<meta name="apple-mobile-web-app-title" content="러닝 내비">
+<meta name="apple-mobile-web-app-title" content="SAFLO">
 <link rel="manifest" href="manifest.webmanifest">
 <link rel="apple-touch-icon" href="icon-192.png">
 <link rel="icon" href="icon-192.png">
@@ -204,7 +204,7 @@
 <section class="screen" id="home">
   <header class="top home-top">
     <div class="date" id="today"></div>
-    <h1>Start a Run</h1>
+    <h1>SAFLO</h1>
     <label class="pill">
       <i class="dot"></i><span id="regionName">어디서 달릴까요? 지역 고르기</span><b aria-hidden="true">▾</b>
       <select id="regionSel" aria-label="시군구 선택"><option value="">시군구 고르기…</option></select>
@@ -722,7 +722,7 @@
     const label = state.byCode[code].label;
     $("regionName").textContent = label;
     $("regionSel").value = code;
-    document.title = `${label} · 러닝 내비`;
+    document.title = `${label} · SAFLO`;
     try { localStorage.setItem("runnavi-region", code); } catch (e) {}
     try { history.replaceState(null, "", `?r=${code}`); } catch (e) {}
     if (!quiet && prev && state.nav) toast(`${label}에 들어왔어요`);

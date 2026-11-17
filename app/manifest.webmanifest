@@ -1,6 +1,6 @@
 {
-  "name": "러닝 내비",
-  "short_name": "러닝 내비",
+  "name": "SAFLO",
+  "short_name": "SAFLO",
   "description": "러닝 전용로·경사도·화장실을 알려주는 러닝 앱",
   "start_url": "./",
   "scope": "./",
