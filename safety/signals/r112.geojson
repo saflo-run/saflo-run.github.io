@@ -1,0 +1,1 @@
+{"type":"FeatureCollection","name":"signals_r112","features":[{"type":"Feature","properties":{"layer":"crosswalk","has_ped_signal":true,"signal_info":"recorded","green_sec":27.0,"red_sec":98.0,"expected_wait_sec":38.4},"geometry":{"type":"Point","coordinates":[127.423765,37.652522]}}]}
