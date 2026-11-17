@@ -168,6 +168,14 @@
   .alert span { font-size: .9em; font-weight: 700; margin-top: .3em; }
   .alert .buzz { font-size: .7em; font-weight: 700; opacity: .65; margin-top: .9em; letter-spacing: .1em; }
 
+  /* 러너 커뮤니티 페이지 */
+  .cm-live { position: absolute; top: 16%; left: 14%; right: 14%; font-size: .78em; font-weight: 800; color: var(--lime); }
+  .cm-list { top: 23%; bottom: 25%; }
+  .cm-list .witem.warn { border-color: #ffb547; }
+  .cm-list .witem b { white-space: normal; font-size: .78em; line-height: 1.3; }
+  .cm-qb { position: absolute; bottom: 11%; left: 0; right: 0; display: flex; gap: 5px; justify-content: center; }
+  .cm-qb button { font-size: .66em; font-weight: 800; border-radius: 99px; padding: .5em .7em; background: var(--card); color: var(--ink); }
+  .cm-qb button.sent { background: var(--lime); color: var(--lime-ink); }
   /* 커뮤니티 응원·알림 */
   .social { position: absolute; inset: 0; z-index: 11; background: #0b0c0d; display: flex; flex-direction: column; align-items: center;
     justify-content: center; text-align: center; padding: 0 16%; border: 3px solid var(--lime); border-radius: 50%; animation: pop .45s ease-out both; }
@@ -234,8 +242,15 @@
         </div>
         <div class="info-course" id="nCourse"></div>
       </section>
+      <!-- 4. 러너 커뮤니티 -->
+      <section class="page">
+        <div class="wl-head">러너 커뮤니티</div>
+        <div class="cm-live" id="cmLive">휴대폰에서 지역을 골라 주세요</div>
+        <div class="wlist cm-list" id="cmList"></div>
+        <div class="cm-qb"><button data-t="🔒 화장실이 잠겨 있어요">🔒 잠김</button><button data-t="⛔ 길이 막혀 있어요">⛔ 막힘</button><button data-t="👍 이 코스 좋아요" data-k="msg">👍 좋아요</button></div>
+      </section>
     </div>
-    <div class="dots" id="iDots"><i class="on"></i><i></i><i></i></div>
+    <div class="dots" id="iDots"><i class="on"></i><i></i><i></i><i></i></div>
   </div>
 
   <!-- 추천 코스 미리보기 -->
@@ -362,7 +377,7 @@
   };
   const S = { view: "wait", page: 0, paused: false, time: 0, lines: [], toilets: [], trace: [], course: null, pos: null, heading: 0,
               alerted: new Set(), alertT: null, lastMsg: 0,
-              pages: { idle: { track: "iTrack", dots: "iDots", n: 3, page: 0 }, run: { track: "track", dots: "dots", n: 4, page: 0 } } };
+              pages: { idle: { track: "iTrack", dots: "iDots", n: 4, page: 0 }, run: { track: "track", dots: "dots", n: 4, page: 0 } } };
   const PAUSE_SVG = `<svg viewBox="0 0 24 24"><rect x="6" y="5" width="4" height="14" rx="1" fill="currentColor"/><rect x="14" y="5" width="4" height="14" rx="1" fill="currentColor"/></svg>`;
   const PLAY_SVG = `<svg viewBox="0 0 24 24"><path d="M8 5l11 7-11 7z" fill="currentColor"/></svg>`;
   const fmtTime = (s) => { s = Math.floor(s); const h = Math.floor(s / 3600), m = Math.floor(s / 60) % 60, x = s % 60;
@@ -540,6 +555,8 @@
         $("tDist").textContent = "–"; $("tName").textContent = "5km 안에 화장실 정보가 없어요"; $("tArrow").style.transform = "";
       }
       drawMap();
+    } else if (m.type === "community") {
+      renderCommunity(m);
     } else if (m.type === "social") {
       social(m);
     } else if (m.type === "done") {
@@ -551,6 +568,26 @@
       if (m.steps) $("dSteps").textContent = `${m.steps.toLocaleString()}걸음${m.cad ? ` · 평균 ${m.cad}/분` : ""}`;
     }
   }
+  // 러너 커뮤니티 페이지: 휴대폰이 보내 준 요약을 보여주고, 버튼으로 알림 보내기
+  function renderCommunity(m) {
+    S.cm = m;
+    if (!m.room) { $("cmLive").textContent = "휴대폰에서 지역을 골라 주세요"; $("cmList").innerHTML = ""; return; }
+    $("cmLive").textContent = m.err ? "커뮤니티에 연결하지 못했어요" : !m.nick ? "휴대폰에서 닉네임을 정해 주세요"
+      : m.live.length ? `🏃 지금 ${m.live.length}명 달리는 중` : `${m.room} · 달리는 러너 없음`;
+    const L = $("cmList"); L.innerHTML = "";
+    if (!m.msgs.length) { const e = document.createElement("div"); e.className = "wl-empty"; e.textContent = "아직 글이 없어요"; L.appendChild(e); }
+    for (const x of m.msgs) {
+      const d = document.createElement("div"); d.className = "witem" + (x.kind === "alert" ? " warn" : "");
+      const b = document.createElement("b"); b.textContent = x.text;
+      const sm = document.createElement("small"); sm.textContent = `${x.nick} · ${x.ago}`;
+      d.append(b, sm); L.appendChild(d);
+    }
+  }
+  document.querySelectorAll(".cm-qb button").forEach((b) => b.addEventListener("click", () => {
+    if (Date.now() - (S.justSwiped || 0) < 350) return;
+    send("cmpost", { text: b.dataset.t, kind: b.dataset.k || "alert" });
+    b.classList.add("sent"); setTimeout(() => b.classList.remove("sent"), 1500);
+  }));
   // ---- 커뮤니티: 휴대폰이 받은 응원·알림을 워치에 띄우고, 버튼으로 답장 ----
   function social(m) {
     const cheer = m.kind === "cheer";

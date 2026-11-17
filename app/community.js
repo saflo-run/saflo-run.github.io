@@ -165,8 +165,19 @@ window.Community = (() => {
     body.appendChild(f);
   }
 
+  // ---------- 워치로 요약 보내기 ----------
+  let lastSum = "";
+  function postSum(force) {
+    const m = { type: "community", room: S.room ? roomLabel() : null, nick: !!nick(), err: !!S.err,
+      live: liveRunners().map((r) => ({ nick: r.nick, course: r.course || "" })),
+      msgs: S.msgs.filter((x) => x.kind !== "cheer").slice(0, 6).map((x) => ({ nick: x.nick, text: x.text, kind: x.kind, ago: ago(tsMs(x)) })) };
+    const j = JSON.stringify(m);
+    if (force || j !== lastSum) { lastSum = j; post(m); }
+  }
+
   // ---------- 그리기 ----------
   function render() {
+    postSum();
     const live = liveRunners();
     $("cmLiveN") && ($("cmLiveN").textContent = live.length ? live.length : "");
     const sub = $("cmRowSub");
@@ -352,6 +363,8 @@ window.Community = (() => {
     if (m.type === "start") runStart();
     else if (m.type === "tick") { if (!S.running) runStart(); if (m.dist != null) S.runDist = m.dist; }
     else if (m.type === "done" || m.type === "idle") runStop();
+    else if (m.cmd === "hello") setTimeout(() => postSum(true), 300);
+    else if (m.cmd === "cmpost" && m.text) send(m.text, m.kind === "msg" ? "msg" : "alert").then((ok) => ok && toast("워치에서 글을 올렸어요"));
     else if (m.cmd === "reply" && m.text) {
       const r = m.to ? { id: m.to, nick: m.toNick } : null;
       (r ? cheer(r, m.text) : send(m.text, "msg")).then((ok) => ok && toast("워치에서 답장을 보냈어요"));
