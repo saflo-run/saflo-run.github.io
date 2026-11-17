@@ -428,7 +428,10 @@
   function idleInfo() {
     const p = state.cur && state.byCode[state.cur], reg = state.cur && state.loaded.get(state.cur);
     const m = { type: "idle", region: p ? p.label : null, courseKm: reg && reg.route ? reg.demo_m / 1000 : null,
-                toilets: reg && reg.route ? toiletsNear(reg.route, 150) : null };
+                toilets: reg && reg.route ? toiletsNear(reg.route, 150) : null,
+                courseName: reg ? reg.courseName || "추천 코스" : null,
+                list: state.cur ? window.CoursePicker?.listFor(state.cur) || null : null,      // 워치에서 고를 코스 목록
+                curKey: reg ? (reg.variant === "pick" && reg.pick ? reg.pick.id : reg.variant || "base") : null };
     if (state.map) {                              // 워치 1인칭 지도용: 휴대폰 지도 가운데 = 지금 위치(미리보기)
       // 지도를 크게 보고 있으면 지도 가운데, 아니면 추천 코스 출발점을 기준으로
       const route = reg && reg.route, zoomed = state.map.getZoom() >= 12;
@@ -473,12 +476,18 @@
     }
     post(m);
   }
+  window.addEventListener("runnavi-courses", () => { if (!state.nav && state.screen === "home") post(idleInfo()); });   // 코스 목록이 준비되면 워치에 다시 보냄
   if (bc) bc.onmessage = (e) => {
     const c = e.data && e.data.cmd;
     if (c === "hello") {
       if (!state.nav) post(state.screen === "done" && state.lastDone ? state.lastDone : idleInfo());
       else { post({ type: "start", kind: state.nav, course: state.courseThin || null, region: state.cur ? state.byCode[state.cur].label : "" }); broadcastTick(true); }
-    } else if (c === "start" && !state.nav) { if (state.screen !== "home") goHome(); startDemo(); }
+    } else if (c === "start" && !state.nav) {                        // 워치에서 코스를 골라 START
+      if (state.screen !== "home") goHome();
+      const key = e.data.course;
+      Promise.resolve(key != null && state.cur && window.CoursePicker ? window.CoursePicker.select(state.cur, key) : null)
+        .then(() => startDemo());
+    }
     else if (c === "gps" && !state.nav) { if (state.screen !== "home") goHome(); startGps(); }
     else if (c === "pause") setPaused(true);
     else if (c === "resume") setPaused(false);
@@ -1011,7 +1020,7 @@
   }
   function stopTracking() {
     if (state.watchId != null) navigator.geolocation.clearWatch(state.watchId);
-    state.watchId = null; cancelAnimationFrame(state.raf); clearInterval(state.clockTimer);
+    state.watchId = null; cancelAnimationFrame(state.raf); clearInterval(state.clockTimer); clearInterval(state.demoTimer);
     state.nextMark.remove(); state.nextShown = false;
     state.me.remove(); state.meShown = false;
     window.SafetyLayer?.onStop();
@@ -1158,9 +1167,19 @@
       last = now;
       if (s >= total) { update(at(total), state.heading, now); toast(`코스 완주! ${(total / 1000).toFixed(1)}km`); return finish(); }
       if (!state.paused || !state.meShown) { const pos = at(s); update(pos, bearing(pos, at(s + 25)), now); }
-      state.raf = requestAnimationFrame(step);
+      if (!document.hidden) state.raf = requestAnimationFrame(step);
     };
     state.raf = requestAnimationFrame(step);
+    // 휴대폰 화면이 다른 창(워치 창)에 가려지면 브라우저가 화면 그리기를 멈춰서 데모가 멈춤 → 가려진 동안에는 타이머로 진행
+    clearInterval(state.demoTimer);
+    state.demoTimer = setInterval(() => {
+      if (state.nav !== "demo") return clearInterval(state.demoTimer);
+      if (document.hidden) step(performance.now());
+    }, 250);
+    document.addEventListener("visibilitychange", function wake() {
+      if (state.nav !== "demo") return document.removeEventListener("visibilitychange", wake);
+      if (!document.hidden) { cancelAnimationFrame(state.raf); state.raf = requestAnimationFrame(step); }
+    });
   }
 
   // ---------- 실제 GPS ----------

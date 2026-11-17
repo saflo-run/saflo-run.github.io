@@ -138,6 +138,41 @@ window.CoursePicker = (() => {
     if (cur && cur.key === "alt" && cur.flat != null) document.getElementById("cFlat").textContent = `평지 ${cur.flat}% · 시설 접근`;
   }
 
+  // ---------- 워치용 ----------
+  // 워치 '코스 고르기' 목록: 시설 접근 + 기존 추천 + 추천 코스 상위 10개 (아직 안 불러왔으면 불러오고 나서 알림)
+  const thinR = (r, n) => { const k = Math.max(1, Math.ceil(r.length / n)); return r.filter((_, i) => i % k === 0 || i === r.length - 1).map((c) => [Math.round(c[0] * 1e5) / 1e5, Math.round(c[1] * 1e5) / 1e5]); };
+  function listFor(code) {
+    if (!(code in S.data) || !(code in S.cmp)) {
+      Promise.all([load(code), loadCmp(code)]).then(() => window.dispatchEvent(new Event("runnavi-courses")));
+      return null;
+    }
+    const reg = S.app.loaded.get(code); if (!reg) return null;
+    const out = [], cmp = S.cmp[code];
+    if (cmp) out.push({ id: "alt", name: "시설 접근 코스", sub: `팀 분석 · 평지 ${cmp.alternative.flat}% · 보안등 ${cmp.alternative.lit}%`,
+                        m: cmp.alternative.meters, route: thinR(cmp.alternative.route, 200) });
+    const base = reg.route0 || reg.route;
+    if (base) out.push({ id: "base", name: cmp ? "기존 추천 코스" : "추천 코스", sub: "지역 기본 코스", m: reg.demo_m0 || reg.demo_m, route: thinR(base, 200) });
+    const score = (x) => (x.f + x.a) / 200 + (x.gap == null ? 0 : Math.max(0, 1 - x.gap / 2000)) * .5 - x.st / 200;
+    for (const x of [...(S.data[code] || [])].sort((p, q) => score(q) - score(p)).slice(0, 10))
+      out.push({ id: x.id, name: x.name, sub: `평지 ${x.f}% · 화장실 ${x.t150}곳${x.gap != null ? ` · ${fmt(x.gap)} 안` : ""}`, m: x.m, poly: x.poly });
+    return out;
+  }
+  // 워치에서 고른 코스를 이 지역의 '지금 코스'로
+  async function select(code, key) {
+    const reg = await S.api.loadRegion(code).catch(() => null);
+    if (!reg) return;
+    await Promise.all([prepare(reg), load(code)]);
+    if (key === "base" || key === "alt") {
+      const v = variants(reg).find((x) => x.key === key);
+      if (v) apply(reg, v);
+      return;
+    }
+    const x = (S.data[code] || []).find((c) => c.id === key);
+    if (!x) return;
+    reg.pick = x; reg.pickRoute = S.api.decode(x.poly);
+    apply(reg, variants(reg).find((v) => v.key === "pick"));
+  }
+
   // ---------- 점수 ----------
   // 고른 조건마다 0~1 점수를 더함. '화장실 1km 이내'·'밤 안심'은 맞는 코스가 있으면 그것만 남김
   function rank(courses) {
@@ -316,5 +351,5 @@ window.CoursePicker = (() => {
     map.on("mouseleave", "cp-line", () => { map.getCanvas().style.cursor = ""; });
     window.addEventListener("resize", pad);
   }
-  return { init, home, has, open, load, prepare, compare };
+  return { init, home, has, open, load, prepare, compare, listFor, select };
 })();
