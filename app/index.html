@@ -308,6 +308,8 @@
       <div class="tile"><i>평균 페이스</i><b class="num" id="dPace">–</b></div>
       <div class="tile"><i>오르막</i><b class="num" id="dClimb">–</b></div>
       <div class="tile"><i>지나간 화장실</i><b class="num" id="dToilet">–</b></div>
+      <div class="tile" id="dStepsT" hidden><i>걸음</i><b class="num" id="dSteps">–</b></div>
+      <div class="tile" id="dCadT" hidden><i>평균 케이던스</i><b class="num" id="dCad">–</b></div>
     </div>
     <button class="bigbtn" id="btnHome">홈으로</button>
   </div>
@@ -481,6 +483,7 @@
     const now = performance.now(), sec = clockSec();
     const m = { type: "tick", kind: state.nav, paused: state.paused, time: sec, dist: state.dist, climb: state.climb,
       pace: state.dist > 30 ? sec / (state.dist / 1000) : null, pos: r5(state.pos), heading: state.camBearing,
+      steps: state.stepsOn ? M.n : null, cad: state.stepsOn ? cadence() : null,
       target: state.target || null, progress: (state.nav === "demo" || state.nav === "steps") && state.demoTotal ? state.demoS / state.demoTotal : null };
     if (force || now - (state.lastTraceSend || 0) > 1000) { state.lastTraceSend = now; m.trace = thin(state.trace, 400); }
     if (force || now - (state.lastNearSend || 0) > 2500) {
@@ -1010,6 +1013,7 @@
     });
   }
   function beginRun(kind) {
+    state.stepsOn = false; $("stepLine").hidden = true;
     state.nav = kind; state.dist = 0; state.climb = 0; state.lastAlt = null; state.trace = []; state.paused = false;
     state.clock = { acc: 0, since: performance.now() };
     state.lastPos = null; state.lastUpdAt = null; state.lastMoveAt = 0; state.lastRegionCheck = 0; state.lastTraceDraw = 0;
@@ -1058,9 +1062,14 @@
     $("dPace").textContent = fmtPace(sec / (state.dist / 1000));
     $("dClimb").innerHTML = `${Math.round(state.climb)}<em>m</em>`;
     $("dToilet").innerHTML = `${toiletsNear(state.trace, 80)}<em>곳</em>`;
+    // 걸음 수와 평균 케이던스 (첫 걸음~마지막 걸음 사이 기준, 멈춰 있던 시간은 빼고)
+    const steps = state.stepsOn ? M.n : null;
+    const avgCad = steps > 1 ? Math.round((steps - 1) / ((M.last - M.first) / 60000)) : null;
+    $("dStepsT").hidden = $("dCadT").hidden = !steps;
+    if (steps) { $("dSteps").innerHTML = `${steps.toLocaleString()}<em>걸음</em>`; $("dCad").innerHTML = avgCad ? `${avgCad}<em>/분</em>` : "–"; }
     $("dWhen").textContent = `${kind === "demo" ? "데모 러닝" : kind === "steps" ? "걸음 감지 러닝" : "러닝"} 완료 · ${state.cur ? state.byCode[state.cur].label : ""}`;
     state.lastDone = { type: "done", dist: state.dist, time: sec, pace: sec / (state.dist / 1000), climb: state.climb,
-                       toilets: toiletsNear(state.trace, 80), trace: thin(state.trace, 400) };
+                       toilets: toiletsNear(state.trace, 80), trace: thin(state.trace, 400), steps, cad: avgCad };
     post(state.lastDone);
     state.map.getSource("trace").setData({ type: "Feature", properties: {}, geometry: { type: "LineString", coordinates: state.trace } });
     clearCourse();
@@ -1188,6 +1197,7 @@
     const now = performance.now();
     if (v < M.prev && M.rising && M.prev > STEP_TH && now - M.last > 260) {
       M.last = now; M.n++; M.times.push(now); M.rising = false;
+      if (M.n === 1) M.first = now;
       M.cb && M.cb(now);
     }
     if (v > M.prev) M.rising = true;
@@ -1226,6 +1236,7 @@
     let s = 0, last = performance.now(), target = 0;
     $("stepLine").hidden = mode !== "steps";
     if (mode === "steps") {                           // 한 걸음마다 목표 지점을 1m씩 앞으로
+      state.stepsOn = true;
       $("stepN").textContent = "0"; $("stepCad").textContent = "–";
       startMotion(() => {
         if (state.paused) return;
@@ -1286,6 +1297,7 @@
   }
   async function startGps() {
     if (!("geolocation" in navigator)) return toast("이 기기에서는 위치를 쓸 수 없어요");
+    state.gpsMotion = motionCapable() ? askMotion() : Promise.resolve(false);   // 걸음 수도 같이 셈 (아이폰은 이 누름 안에서 허용을 물어봄)
     if (!window.isSecureContext) return toast("위치는 https 주소에서만 쓸 수 있어요");
     if (!state.regions) return;
     let st = "prompt";
@@ -1312,6 +1324,11 @@
         state.map.jumpTo({ center: pos, pitch: 55, zoom: 17 });
         await countdown();
         clearCourse(); state.courseThin = null; state.demoTotal = 0; beginRun("gps"); phase = "run";
+        (state.gpsMotion || Promise.resolve(false)).then((ok) => {
+          if (!ok || state.nav !== "gps") return;
+          state.stepsOn = true; $("stepLine").hidden = false; $("stepN").textContent = "0"; $("stepCad").textContent = "–";
+          startMotion(() => { $("stepN").textContent = M.n.toLocaleString(); $("stepCad").textContent = cadence() ?? "–"; });
+        });
       }
       if (phase === "run" && state.nav === "gps") update(pos, heading, performance.now());
     }, (err) => {

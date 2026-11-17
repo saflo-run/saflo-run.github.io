@@ -153,6 +153,9 @@
   .tile small { display: block; font-size: .66em; color: var(--ink-2); }
   .tile b { font-size: 1.05em; font-weight: 800; }
   .tile.hl b { color: var(--lime); }
+  .tile.wide { grid-column: 1 / -1; }
+  .stepw { margin-top: .7em; font-size: .78em; font-weight: 700; color: var(--ink-2); }
+  .stepw b { color: var(--lime); }
   .okbtn { margin-top: .7em; padding: .45em 1.6em; border-radius: 99px; background: var(--lime); color: var(--lime-ink); font-weight: 800; font-size: .85em; }
 
   /* 카운트다운 / 알림 */
@@ -268,6 +271,7 @@
           <div><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><circle cx="12" cy="13" r="8"/><path d="M12 9v4l2.5 2M9 2h6M12 2v3"/></svg>
             <span><small>Pace</small><b class="num" id="rPace">–</b></span></div>
         </div>
+        <div class="stepw num" id="rSteps" hidden></div>
         <div class="chip"><span>🚻</span><span class="ar" id="rAr">↑</span><span class="num" id="rToilet">화장실 찾는 중</span></div>
       </section>
       <!-- 3. 화장실 방향 -->
@@ -297,6 +301,7 @@
       <div class="tile"><small>Time</small><b class="num" id="dTime">–</b></div>
       <div class="tile"><small>Pace</small><b class="num" id="dPace">–</b></div>
       <div class="tile"><small>지나간 화장실</small><b class="num" id="dToilet">–</b></div>
+      <div class="tile wide" id="dStepsT" hidden><small>Steps</small><b class="num" id="dSteps">–</b></div>
     </div>
     <button class="okbtn" id="dOk">확인</button>
   </div>
@@ -495,6 +500,8 @@
       $("rTime").textContent = $("mTime").textContent = fmtTime(m.time);
       $("rDist").textContent = `${(m.dist / 1000).toFixed(2)} km`;
       $("rPace").textContent = fmtPace(m.pace);
+      $("rSteps").hidden = m.steps == null;                        // 걸음 수 (걸음 감지·GPS 러닝)
+      if (m.steps != null) $("rSteps").innerHTML = `👟 <b>${m.steps.toLocaleString()}</b>걸음${m.cad ? ` · ${m.cad}/분` : ""}`;
       $("ringFg").style.strokeDashoffset = m.progress != null ? 100 - m.progress * 100 : 100;
       const t = m.target;
       if (t) {
@@ -518,6 +525,8 @@
       show("done");
       $("dDist").textContent = `${(m.dist / 1000).toFixed(2)}km`; $("dTime").textContent = fmtTime(m.time);
       $("dPace").textContent = fmtPace(m.pace); $("dToilet").textContent = `${m.toilets}곳`;
+      $("dStepsT").hidden = !m.steps;
+      if (m.steps) $("dSteps").textContent = `${m.steps.toLocaleString()}걸음${m.cad ? ` · 평균 ${m.cad}/분` : ""}`;
     }
   }
   if (bc) bc.onmessage = (e) => e.data && e.data.type && onMsg(e.data);
