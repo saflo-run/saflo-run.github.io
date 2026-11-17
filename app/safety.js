@@ -89,10 +89,13 @@ window.SafetyLayer = (() => {
     map.addLayer({ id: "sf-icons", type: "symbol", source: "sf-pts", minzoom: 12, layout: { ...vis,
       "icon-image": ["concat", "sf-", ["get", "k"]], "icon-allow-overlap": true,
       "icon-size": ["interpolate", ["linear"], ["zoom"], 12, ["match", ["get", "layer"], "police", .7, .3], 16, ["match", ["get", "layer"], "police", 1, .85]] },
-      filter: ["any", ["==", ["get", "layer"], "police"], ["==", ["get", "layer"], "bell"],
-               ["all", [">=", ["zoom"], 15], ["==", ["get", "layer"], "signal"]],
-               ["all", [">=", ["zoom"], 15], ["==", ["get", "layer"], "crosswalk"], ["==", ["get", "has_ped_signal"], true]]] });
-    map.on("click", "sf-icons", (e) => {
+      filter: ["any", ["==", ["get", "layer"], "police"], ["==", ["get", "layer"], "bell"]] });
+    // 신호등·보행신호 횡단보도: 안심모드와 상관없이 늘 표시 (가벼운 signals/ 파일만 따로 불러옴, 가까이 볼 때만)
+    map.addSource("sf-sig", { type: "geojson", data: empty });
+    map.addLayer({ id: "sf-signal", type: "symbol", source: "sf-sig", minzoom: 15, layout: {
+      "icon-image": ["concat", "sf-", ["get", "layer"]], "icon-allow-overlap": true,
+      "icon-size": ["interpolate", ["linear"], ["zoom"], 15, .6, 17, .85] } });
+    map.on("click", ["sf-icons", "sf-signal"], (e) => {
       const p = e.features[0].properties, y = (v) => v === true || v === "true";
       const html = {
         police: () => `👮 <b>${p.name || "경찰관서"}</b><br>${y(p.open_24h) ? "24시간 운영" : "주간만 운영 (치안센터 등)"}`,
@@ -113,7 +116,7 @@ window.SafetyLayer = (() => {
     S.row = document.createElement("button");
     S.row.className = "row sf-row"; S.row.type = "button";
     S.row.innerHTML = `<span class="ic" aria-hidden="true">🛡</span>
-      <span class="t"><b>밤 러닝 안심모드</b><small id="sfSub">경찰·신호등·보안등·CCTV·사각지대 보기</small></span>
+      <span class="t"><b>밤 러닝 안심모드</b><small id="sfSub">경찰·보안등·CCTV·사각지대 보기</small></span>
       <span class="sw" aria-hidden="true"></span>`;
     S.row.onclick = () => setOn(!S.on);
     S.legend = document.createElement("div");
@@ -154,8 +157,34 @@ window.SafetyLayer = (() => {
     });
     return S.statsP;
   }
+  // 신호 위치: 안심모드와 상관없이 늘 불러옴 (시군구당 수십 KB짜리 signals/ 파일만)
+  let ts = null;
+  function refreshSignals() {
+    if (!S.map) return;
+    const cur = S.app.cur;
+    if (!cur) return;
+    const codes = [cur, ...((S.app.byCode[cur] || {}).nb || [])].slice(0, 9);
+    const key = codes.join(",");
+    Promise.all(codes.map((c) => getJson(`${BASE}signals/${c}.geojson`))).then((list) => {
+      clearTimeout(ts);
+      ts = setTimeout(() => {
+        if (key === S.sigShown) return;
+        S.sigShown = key;
+        const feats = [];
+        S.cross = [];
+        for (const fc of list) for (const f of (fc && fc.features) || []) {
+          const p = f.properties;
+          feats.push(f);
+          if ((p.layer === "crosswalk" && p.has_ped_signal) || (p.layer === "signal" && p.is_pedestrian))
+            S.cross.push({ ll: f.geometry.coordinates, g: p.green_sec, r: p.red_sec, w: p.expected_wait_sec, rt: !!p.has_countdown });
+        }
+        S.map.getSource("sf-sig").setData({ type: "FeatureCollection", features: feats });
+      }, 60);
+    });
+  }
   let t = null;
   function refresh() {
+    refreshSignals();
     if (!S.map || !S.on) return;
     const cur = S.app.cur;
     if (!cur) return;
@@ -169,15 +198,14 @@ window.SafetyLayer = (() => {
           if (key === S.shown) return;
           S.shown = key;
           const pts = [], blind = [];
-          S.cross = []; S.police = [];
+          S.police = [];
           for (const [fac, bl] of list) {
             for (const f of (fac && fac.features) || []) {
               const p = f.properties;
+              if (p.layer === "signal" || p.layer === "crosswalk") continue;   // 신호는 sf-sig 레이어가 늘 보여줌
               p.k = p.layer === "police" ? (p.open_24h ? "police" : "police_day") : p.layer;
               pts.push(f);
               const ll = f.geometry.coordinates;
-              if ((p.layer === "crosswalk" && p.has_ped_signal) || (p.layer === "signal" && p.is_pedestrian))
-                S.cross.push({ ll, g: p.green_sec, r: p.red_sec, w: p.expected_wait_sec, rt: !!p.has_countdown });
               if (p.layer === "police" && p.open_24h) S.police.push({ ll, n: p.name });
             }
             for (const f of (bl && bl.features) || []) blind.push(f);
@@ -193,7 +221,8 @@ window.SafetyLayer = (() => {
     const sub = document.getElementById("sfSub");
     if (!sub) return;
     const s = S.stats && code && S.stats[code];
-    if (!s) { sub.textContent = "경찰·신호등·보안등·CCTV·사각지대 보기"; return; }
+    refreshSignals();                                           // 지역이 바뀌면 신호 위치도 바로 바꿈
+    if (!s) { sub.textContent = "경찰·보안등·CCTV·사각지대 보기"; return; }
     const warn = (s.police_missing_coords_n ? " · 경찰 일부 누락" : "") + (s.has_signal_info === false ? " · 신호 자료 없음" : "");
     sub.innerHTML = `안전 점수 <span style="color:var(--ink);font-weight:700">${s.safety_score ?? "–"}</span> · 밤 경찰 1km ${pct(s.run_police_night_1km_pct)}` +
       ` (낮 ${pct(s.run_police_day_1km_pct)}) · 밤 조명·CCTV ${pct(s.run_night_lit_pct)}${warn}`;
@@ -245,6 +274,7 @@ window.SafetyLayer = (() => {
     let saved = null; try { saved = localStorage.getItem("runnavi-safety"); } catch (e) {}
     const h = new Date().getHours();
     setOn(saved ? saved === "1" : (h >= 19 || h < 6));     // 저장된 설정이 없으면 밤에 자동으로 켬
+    refreshSignals();                                       // 신호 위치는 안심모드와 상관없이 불러옴
   }
   return { init, refresh, onHome, onCourse, onUpdate, onStop };
 })();
