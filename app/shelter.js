@@ -8,7 +8,7 @@
  * index.html 은 init(map) 만 부른다   (이 파일이 없어도 앱은 그대로 동작)
  */
 window.ShelterLayer = (() => {
-  const BASE = "data/shelter/";
+  const BASE = "data/";
   const MIN_ZOOM = 13;
   const S = { map: null, season: null, index: null, loaded: new Map(), pending: new Set() };
   const INFO = {
