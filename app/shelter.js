@@ -3,6 +3,7 @@
  *   - 데이터: data/shelter/heat_<시도>.json, cold_<시도>.json (행정안전부 재난안전데이터 공유플랫폼)
  *     index.json 의 시도별 범위를 보고, 지금 화면에 걸친 시도 파일만 불러옴 (줌 13 이상)
  *   - 쉼터를 누르면 평일 운영시간 · 주말/야간 개방 · 비고를 보여줌
+ *   - 밤 러닝 안심모드를 켜면 야간 개방 쉼터만 남김 (무더위: 야간개방 Y, 한파: 평일 21시 이후까지 운영)
  *   - 홈 화면 시설 칩(🏠 쉼터)으로 켜고 끔 → poi_filter.js 가 'shelter' 층을 보이기/숨기기
  *   - 발표·시연용: 주소 끝에 &season=heat 또는 &season=cold 를 붙이면 계절과 상관없이 그 쉼터를 보여줌
  * index.html 은 init(map) 만 부른다   (이 파일이 없어도 앱은 그대로 동작)
@@ -10,7 +11,8 @@
 window.ShelterLayer = (() => {
   const BASE = "data/";
   const MIN_ZOOM = 13;
-  const S = { map: null, season: null, index: null, loaded: new Map(), pending: new Set() };
+  const S = { map: null, season: null, index: null, loaded: new Map(), pending: new Set(), night: false };
+  const NIGHT_FILTER = ["==", ["get", "nt"], "Y"];
   const INFO = {
     heat: { name: "무더위쉼터", color: "#ff8a3d" },
     cold: { name: "한파쉼터", color: "#5bb8ff" },
@@ -76,6 +78,34 @@ window.ShelterLayer = (() => {
       `<div style="margin-top:6px;font-size:12px;line-height:1.6">${lines.join("<br>")}</div>`;
   }
 
+  // 밤 러닝 안심모드 버튼(.sf-row)을 지켜보다가 켜지면 야간 개방 쉼터만
+  function applyNight() {
+    const map = S.map;
+    if (map.getLayer("shelter")) map.setFilter("shelter", S.night ? NIGHT_FILTER : null);
+    const box = document.querySelector(".sf-legend");
+    if (!box) return;
+    let el = box.querySelector(".sh-legend");
+    if (!el) {
+      el = document.createElement("span"); el.className = "sh-legend";
+      el.style.cssText = "flex-basis:100%";
+      el.innerHTML = `🏠 밤에 여는 ${INFO[S.season].name}만 표시`;
+      box.appendChild(el);
+    }
+    el.hidden = !S.night;
+  }
+
+  function watchNight() {
+    const row = document.querySelector(".sf-row");
+    if (!row) return false;
+    const read = () => {
+      const on = row.getAttribute("aria-pressed") === "true";
+      if (on !== S.night) { S.night = on; applyNight(); }
+    };
+    new MutationObserver(read).observe(row, { attributes: true, attributeFilter: ["aria-pressed"] });
+    read();
+    return true;
+  }
+
   async function init(map) {
     S.season = season();
     if (!S.season) return;                        // 쉼터 운영 기간이 아니면 아무것도 안 함
@@ -101,6 +131,10 @@ window.ShelterLayer = (() => {
     map.on("mouseleave", "shelter", () => { map.getCanvas().style.cursor = ""; });
     map.on("moveend", loadVisible);
     loadVisible();
+    if (!watchNight()) {
+      let tries = 0;
+      const t = setInterval(() => { if (watchNight() || ++tries > 20) clearInterval(t); }, 300);
+    }
   }
 
   return { init, season: () => S.season || season(), name: () => (INFO[season()] || {}).name };
