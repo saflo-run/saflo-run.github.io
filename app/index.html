@@ -353,6 +353,7 @@
 <script src="shop/loader.js"></script>
 <script src="run_art.js"></script><!-- 러닝 아트: 달린 길을 그림으로 (없어도 앱 동작) -->
 <script src="landmarks.js"></script><!-- 랜드마크 라벨: 역·다리·강·공원·병원 등 (없어도 앱 동작) -->
+<script src="route_planner.js"></script><!-- 출발지→목적지 길 찾기 (없어도 앱 동작) -->
 <script>
 (() => {
   const DATA = "data/";
@@ -930,6 +931,7 @@
       try { window.Shop?.init(map, state); } catch (e) { console.error("아바타 상점", e); }
       try { window.RunArt?.init(map, state); } catch (e) { console.error("러닝 아트", e); }
       try { window.LandmarkLayer?.init(map); } catch (e) { console.error("랜드마크", e); }
+      try { window.RoutePlanner?.init(map, state, { openCourse, decode, show, loadRegion, setCurrent }); } catch (e) { console.error("길 찾기", e); }
 
       const q = new URLSearchParams(location.search).get("r");
       let last = null; try { last = localStorage.getItem("runnavi-region"); } catch (e) {}
