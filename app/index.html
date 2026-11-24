@@ -346,8 +346,12 @@
 <script src="voice_coach.js"></script><!-- 음성 코치 (없어도 앱 동작) -->
 <script src="course_gap.js"></script><!-- 코스 화장실 최대 간격 (없어도 앱 동작) -->
 <script src="poi_filter.js"></script><!-- 시설 켜고 끄기 (없어도 앱 동작) -->
+<script src="shelter.js"></script><!-- 무더위·한파 쉼터 (없어도 앱 동작) -->
 <script src="course_picker.js"></script><!-- 맞춤형 코스 추천 (없어도 앱 동작: 기본 코스 1개) -->
 <script src="community.js"></script><!-- 러너 커뮤니티 (없어도 앱 동작) -->
+<script src="ranking.js"></script><!-- 이번 주 러닝 랭킹 (없어도 앱 동작) -->
+<script src="run_art.js"></script><!-- 러닝 아트: 달린 길을 그림으로 (없어도 앱 동작) -->
+<script src="landmarks.js"></script><!-- 랜드마크 라벨: 역·다리·강·공원·병원 등 (없어도 앱 동작) -->
 <script>
 (() => {
   const DATA = "data/";
@@ -918,8 +922,12 @@
       try { window.NightToilet?.init(map, state); } catch (e) { console.error("밤 안심 화장실", e); }
       try { window.CourseGap?.init(map, state); } catch (e) { console.error("코스 화장실 간격", e); }
       try { window.PoiFilter?.init(map); } catch (e) { console.error("시설 켜고 끄기", e); }
+      try { window.ShelterLayer?.init(map); } catch (e) { console.error("쉼터", e); }
       try { window.CoursePicker?.init(map, state, { openCourse, decode, show, loadRegion }); } catch (e) { console.error("코스 추천", e); }
       try { window.Community?.init(map, state); } catch (e) { console.error("러너 커뮤니티", e); }
+      try { window.Ranking?.init(map, state); } catch (e) { console.error("랭킹", e); }
+      try { window.RunArt?.init(map, state); } catch (e) { console.error("러닝 아트", e); }
+      try { window.LandmarkLayer?.init(map); } catch (e) { console.error("랜드마크", e); }
 
       const q = new URLSearchParams(location.search).get("r");
       let last = null; try { last = localStorage.getItem("runnavi-region"); } catch (e) {}

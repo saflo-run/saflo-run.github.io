@@ -1,8 +1,8 @@
 /* 시설 켜고 끄기 (담당: 화장실 공공데이터 / 보고서 '문제점 ① 지도 정보 과밀' 해결)
- * 홈 화면 지역 선택 아래에 칩을 두고, 눌러서 화장실·음수대·편의점·경찰·신호를 지도에서 켜고 끔 (설정 기억)
+ * 홈 화면 지역 선택 아래에 칩을 두고, 눌러서 화장실·음수대·편의점·경찰·신호·쉼터를 지도에서 켜고 끔 (설정 기억)
  *   - 화장실·음수대·편의점·경찰(OSM): 같은 poi 층 안의 종류라 '필터'로 숨김
  *     다른 기능(밤 안심모드, 안전시설 레이어)이 정한 필터는 그대로 두고, 그 위에 '숨긴 종류 빼기'만 덧붙임
- *   - 신호: 안전시설 레이어의 신호 층(sf-signal)을 통째로 보이기/숨기기
+ *   - 신호·쉼터: 안전시설 레이어의 신호 층(sf-signal), 쉼터 층(shelter)을 통째로 보이기/숨기기
  *   - 숨긴 시설은 지도에서만 빠짐. 달리는 중 '다음 화장실' 안내, 워치 알림, 음성 안내는 그대로 동작
  * index.html 은 init(map) 만 부른다   (이 파일이 없어도 앱은 그대로 동작)
  */
@@ -13,7 +13,9 @@ window.PoiFilter = (() => {
     { k: "store", ic: "🏪", name: "편의점" },
     { k: "police", ic: "👮", name: "경찰" },
     { k: "signal", ic: "🚦", name: "신호" },
+    { k: "shelter", ic: "🏠", name: "쉼터" },       // 무더위·한파 쉼터 (shelter.js, 운영 기간에만 칩이 보임)
   ];
+  const LAYER_KINDS = { signal: "sf-signal", shelter: "shelter" };   // 층을 통째로 보이기/숨기기
   const POI_LAYERS = ["poi-toilet", "poi-other"];
   const S = { map: null, hidden: new Set(), base: {}, chips: new Map() };
 
@@ -21,7 +23,7 @@ window.PoiFilter = (() => {
 
   // 다른 기능이 정한 필터(base) + 숨긴 종류 빼기
   function combined(id) {
-    const hide = [...S.hidden].filter((k) => k !== "signal");
+    const hide = [...S.hidden].filter((k) => !LAYER_KINDS[k]);
     const base = S.base[id];
     if (!hide.length) return base;
     const notHidden = ["!", ["in", ["get", "t"], ["literal", hide]]];
@@ -31,7 +33,8 @@ window.PoiFilter = (() => {
   function apply() {
     const map = S.map;
     for (const id of POI_LAYERS) if (map.getLayer(id)) S.origSetFilter(id, combined(id));
-    if (map.getLayer("sf-signal")) map.setLayoutProperty("sf-signal", "visibility", S.hidden.has("signal") ? "none" : "visible");
+    for (const [k, layer] of Object.entries(LAYER_KINDS))
+      if (map.getLayer(layer)) map.setLayoutProperty(layer, "visibility", S.hidden.has(k) ? "none" : "visible");
     for (const [k, el] of S.chips) el.setAttribute("aria-pressed", S.hidden.has(k) ? "false" : "true");
     try { localStorage.setItem("runnavi-hide", JSON.stringify([...S.hidden])); } catch (e) {}
   }
@@ -50,9 +53,11 @@ window.PoiFilter = (() => {
     const row = document.createElement("div");
     row.className = "pf-row"; row.setAttribute("role", "group"); row.setAttribute("aria-label", "지도에 보일 시설");
     for (const { k, ic, name } of KINDS) {
+      if (k === "shelter" && !window.ShelterLayer?.season?.()) continue;   // 쉼터 운영 기간이 아니면 칩 숨김
+      const label = k === "shelter" ? (window.ShelterLayer.name() || name) : name;
       const b = document.createElement("button");
       b.type = "button"; b.className = "pf-chip";
-      b.innerHTML = `<span aria-hidden="true">${ic}</span>${name}`;
+      b.innerHTML = `<span aria-hidden="true">${ic}</span>${label}`;
       b.onclick = () => { S.hidden.has(k) ? S.hidden.delete(k) : S.hidden.add(k); apply(); };
       S.chips.set(k, b); row.appendChild(b);
     }
