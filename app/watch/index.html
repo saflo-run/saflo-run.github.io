@@ -168,6 +168,9 @@
   .alert span { font-size: .9em; font-weight: 700; margin-top: .3em; }
   .alert .buzz { font-size: .7em; font-weight: 700; opacity: .65; margin-top: .9em; letter-spacing: .1em; }
 
+  /* 결과 화면 뒤에 내가 달린 길 그림 */
+  .dArt { position: absolute; inset: 12%; width: 76%; height: 76%; opacity: .2; pointer-events: none; filter: drop-shadow(0 0 4px #c8f25b); }
+  .res > *:not(.dArt) { position: relative; }
   /* 러너 커뮤니티 페이지 */
   .cm-live { position: absolute; top: 16%; left: 14%; right: 14%; font-size: .78em; font-weight: 800; color: var(--lime); }
   .cm-list { top: 23%; bottom: 25%; }
@@ -319,6 +322,7 @@
 
   <!-- 결과 -->
   <div class="view res" id="vDone" hidden>
+    <svg class="dArt" id="dArt" viewBox="0 0 100 100" preserveAspectRatio="xMidYMid meet" aria-hidden="true"><polyline id="dArtLine" fill="none" stroke="#c8f25b" stroke-width="3.2" stroke-linecap="round" stroke-linejoin="round"/></svg>
     <h4>Running Result</h4>
     <div class="grid">
       <div class="tile hl"><small>Distance</small><b class="num" id="dDist">–</b></div>
@@ -565,6 +569,14 @@
       $("dDist").textContent = `${(m.dist / 1000).toFixed(2)}km`; $("dTime").textContent = fmtTime(m.time);
       $("dPace").textContent = fmtPace(m.pace); $("dToilet").textContent = `${m.toilets}곳`;
       $("dStepsT").hidden = !m.steps;
+      // 달린 길 모양
+      if (m.trace && m.trace.length > 1) {
+        const lat0 = m.trace[0][1] * Math.PI / 180, kx = Math.cos(lat0);
+        const xs = m.trace.map((c) => c[0] * kx), ys = m.trace.map((c) => -c[1]);
+        const x0 = Math.min(...xs), x1 = Math.max(...xs), y0 = Math.min(...ys), y1 = Math.max(...ys), sc = 92 / Math.max(x1 - x0, y1 - y0, 1e-6);
+        const ox = (100 - (x1 - x0) * sc) / 2, oy = (100 - (y1 - y0) * sc) / 2;
+        $("dArtLine").setAttribute("points", xs.map((x, i) => `${(ox + (x - x0) * sc).toFixed(1)},${(oy + (ys[i] - y0) * sc).toFixed(1)}`).join(" "));
+      }
       if (m.steps) $("dSteps").textContent = `${m.steps.toLocaleString()}걸음${m.cad ? ` · 평균 ${m.cad}/분` : ""}`;
     }
   }
