@@ -71,6 +71,7 @@
         special ||= saved.special;
         run.next++;
         run.pending = null;
+        window.SafloCourseCoins?.collect(saved, run.point);
       }
       if (earned || run.error || force) refresh();
     } catch {
@@ -87,8 +88,9 @@
       noticeTimer = setTimeout(() => { n.textContent = ''; }, 3500);
     }
   }
-  function distance(cumulative, fix) {
+  function distance(cumulative, fix, point, along) {
     if (!run?.active || !Number.isFinite(cumulative) || cumulative < run.lastDistance) return;
+    run.point = point;
     const delta = cumulative - run.lastDistance;
     run.lastDistance = cumulative;
     if (run.mode === 'gps') {
@@ -103,6 +105,9 @@
     }
     run.meters += delta;
     settle();
+    if (run.mode === 'demo' && Number.isFinite(along)) {
+      window.SafloCourseCoins?.progress(along, run.next * rule.meters - run.meters, run.next);
+    }
     renderDistance();
   }
   function end() {
@@ -112,5 +117,5 @@
   }
   el('retry').onclick = () => run && settle(true);
   window.addEventListener('storage', e => { if (run && wallet.changed(run.mode, e.key)) refresh(); });
-  window.SafloDistanceEvents = Object.freeze({start, distance, end, resetFix() { if (run) run.lastFix = null; }});
+  window.SafloDistanceEvents = Object.freeze({stepMeters:rule.meters, start, distance, end, resetFix() { if (run) run.lastFix = null; }});
 })();

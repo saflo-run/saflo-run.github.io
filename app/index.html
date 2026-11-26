@@ -196,7 +196,7 @@
   .maplibregl-ctrl-attrib a { color: var(--ink-2) !important; }
   .maplibregl-ctrl-attrib-button { filter: invert(1); }
 </style>
-<link rel="stylesheet" href="rewards/events.css?v=20261126">
+<link rel="stylesheet" href="rewards/events.css?v=coinmap1">
 </head>
 <body>
 <div id="map" aria-label="러닝 지도"></div>
@@ -353,7 +353,8 @@
 
 <script src="https://unpkg.com/maplibre-gl@4.7.1/dist/maplibre-gl.js"></script>
 <script src="rewards/wallet.js?v=20261126"></script>
-<script src="rewards/events.js?v=20261126"></script>
+<script src="rewards/course-coins.js?v=coinmap1"></script>
+<script src="rewards/events.js?v=coinmap1"></script>
 <script src="safety.js"></script><!-- 안전시설 레이어 (없어도 앱 동작) -->
 <script src="night_toilet.js"></script><!-- 밤 안심 화장실 (없어도 앱 동작) -->
 <script src="watch_notify.js"></script><!-- 워치 알림: 다음 화장실 (없어도 앱 동작) -->
@@ -987,12 +988,33 @@
   });
 
   // ---------- 코스 화면 ----------
-  function drawCourse(route) {
+  function measureCourse(route) {
+    const cum = [0];
+    for (let i = 1; i < route.length; i++) cum.push(cum[i - 1] + haversine(route[i - 1], route[i]));
+    const total = cum[cum.length - 1];
+    function at(distance) {
+      if (distance <= 0) return route[0];
+      if (distance >= total) return route[route.length - 1];
+      let low = 1, high = cum.length - 1;
+      while (low < high) {
+        const mid = Math.floor((low + high) / 2);
+        if (cum[mid] < distance) low = mid + 1;
+        else high = mid;
+      }
+      const i = low, a = route[i - 1], b = route[i];
+      const t = (distance - cum[i - 1]) / (cum[i] - cum[i - 1]);
+      return [a[0] + (b[0] - a[0]) * t, a[1] + (b[1] - a[1]) * t];
+    }
+    return {total, at};
+  }
+  function drawCourse(route, course = measureCourse(route)) {
+    window.SafloCourseCoins?.show(state.map, course, window.SafloDistanceEvents?.stepMeters ?? 1000);
     state.map.getSource("course").setData({ type: "Feature", properties: {}, geometry: { type: "LineString", coordinates: route } });
     state.startPin.setLngLat(route[0]).addTo(state.map);
     state.endPin.setLngLat(route[route.length - 1]).addTo(state.map);
   }
   function clearCourse() {
+    window.SafloCourseCoins?.clear();
     state.map.getSource("course").setData({ type: "FeatureCollection", features: [] });
     state.startPin.remove(); state.endPin.remove(); state.kmTag.remove();
     window.CourseGap?.clear();
@@ -1054,6 +1076,7 @@
       state.map.setPaintProperty("course-glow", "line-opacity", 0);
     }
     $("pausedTag").hidden = true; $("btnPause").classList.remove("paused"); setPauseIcon(false);
+    if (kind === "gps") window.SafloCourseCoins?.show(state.map, null);
     window.SafloDistanceEvents?.start(kind);
     show("run");
     clearInterval(state.clockTimer);
@@ -1078,6 +1101,7 @@
   }
   function stopTracking() {
     window.SafloDistanceEvents?.end();
+    window.SafloCourseCoins?.clear();
     if (state.watchId != null) navigator.geolocation.clearWatch(state.watchId);
     state.watchId = null; cancelAnimationFrame(state.raf); clearInterval(state.clockTimer); clearInterval(state.demoTimer); stopMotion();
     state.nextMark.remove(); state.nextShown = false;
@@ -1125,7 +1149,7 @@
       state.lastUpdAt = now;
       if (!state.paused) {
         if (moved < 50) state.dist += moved;
-        window.SafloDistanceEvents?.distance(state.dist, gpsFix);
+        window.SafloDistanceEvents?.distance(state.dist, gpsFix, pos, state.demoS);
         if (moved / dt > 0.8) state.lastMoveAt = now;                 // 초속 0.8m 넘게 움직일 때만 '달리는 중'
         const lastT = state.trace[state.trace.length - 1];
         if (!lastT || haversine(lastT, pos) > 3) state.trace.push(pos);
@@ -1251,20 +1275,14 @@
   async function startDemo(mode = "demo") {
     const reg = state.cur && await loadRegion(state.cur).catch(() => null);
     if (!reg || !reg.route) return toast("이 지역은 추천 코스가 없어요");
-    const route = reg.route, cum = [0];
-    for (let i = 1; i < route.length; i++) cum.push(cum[i - 1] + haversine(route[i - 1], route[i]));
-    const total = cum[cum.length - 1];
-    const at = (s) => {
-      s = Math.min(Math.max(s, 0), total);
-      let i = 1; while (i < cum.length - 1 && cum[i] < s) i++;
-      const t = (s - cum[i - 1]) / Math.max(cum[i] - cum[i - 1], 1e-6);
-      return [route[i - 1][0] + (route[i][0] - route[i - 1][0]) * t, route[i - 1][1] + (route[i][1] - route[i - 1][1]) * t];
-    };
+    const route = reg.route;
+    const course = measureCourse(route);
+    const {total, at} = course;
     ensureAround(state.cur);
     state.camBearing = bearing(at(0), at(25));
     state.map.jumpTo({ center: at(0), bearing: state.camBearing, pitch: 55, zoom: 17 });
     await countdown();
-    drawCourse(route);
+    drawCourse(route, course);
     state.courseThin = thin(route, 400); state.demoS = 0; state.demoTotal = total;
     beginRun(mode);
     let s = 0, last = performance.now(), target = 0;
