@@ -196,6 +196,7 @@
   .maplibregl-ctrl-attrib a { color: var(--ink-2) !important; }
   .maplibregl-ctrl-attrib-button { filter: invert(1); }
 </style>
+<link rel="stylesheet" href="rewards/events.css?v=20261126">
 </head>
 <body>
 <div id="map" aria-label="러닝 지도"></div>
@@ -287,6 +288,12 @@
     </div>
     <div class="roadline"><span class="dot" id="roadChip"></span><span id="roadTxt">–</span></div>
     <div class="stepline" id="stepLine" hidden>👟 걸음 <b class="num" id="stepN">0</b> · 케이던스 <b class="num" id="stepCad">–</b>/분</div>
+    <section id="sfre-panel" hidden aria-label="거리 이벤트">
+      <header><span id="sfre-wallet"></span><b id="sfre-earned"></b></header>
+      <progress id="sfre-progress" max="1" value="0" aria-label="다음 보상 진행률"></progress>
+      <span id="sfre-left"></span><span id="sfre-notice" role="status"></span>
+      <small id="sfre-problem" role="status" hidden>코인 저장소 확인 필요</small>
+    </section>
     <div class="controls">
       <button class="ctl" id="btnMode" aria-label="길 색 바꾸기">◐</button>
       <button class="pause" id="btnPause" aria-label="일시정지">
@@ -311,6 +318,11 @@
       <div class="tile" id="dStepsT" hidden><i>걸음</i><b class="num" id="dSteps">–</b></div>
       <div class="tile" id="dCadT" hidden><i>평균 케이던스</i><b class="num" id="dCad">–</b></div>
     </div>
+    <section id="sfre-summary" hidden aria-label="거리 이벤트 결과">
+      <b id="sfre-result"></b>
+      <details id="sfre-history"><summary>코인 획득 내역</summary><ul id="sfre-list"></ul></details>
+      <button id="sfre-retry" hidden>코인 저장 다시 시도</button>
+    </section>
     <button class="bigbtn" id="btnHome">홈으로</button>
   </div>
 </section>
@@ -340,6 +352,8 @@
 <div class="loading" id="loading" hidden>러닝 길 불러오는 중…</div>
 
 <script src="https://unpkg.com/maplibre-gl@4.7.1/dist/maplibre-gl.js"></script>
+<script src="rewards/wallet.js?v=20261126"></script>
+<script src="rewards/events.js?v=20261126"></script>
 <script src="safety.js"></script><!-- 안전시설 레이어 (없어도 앱 동작) -->
 <script src="night_toilet.js"></script><!-- 밤 안심 화장실 (없어도 앱 동작) -->
 <script src="watch_notify.js"></script><!-- 워치 알림: 다음 화장실 (없어도 앱 동작) -->
@@ -1040,6 +1054,7 @@
       state.map.setPaintProperty("course-glow", "line-opacity", 0);
     }
     $("pausedTag").hidden = true; $("btnPause").classList.remove("paused"); setPauseIcon(false);
+    window.SafloDistanceEvents?.start(kind);
     show("run");
     clearInterval(state.clockTimer);
     state.clockTimer = setInterval(() => { $("sTime").textContent = fmtTime(clockSec()); broadcastTick(); }, 250);
@@ -1052,6 +1067,7 @@
   }
   function setPaused(p) {
     if (!state.nav || p === state.paused) return;
+    window.SafloDistanceEvents?.resetFix();
     state.paused = p;
     const now = performance.now();
     if (p) { state.clock.acc += now - state.clock.since; state.clock.since = null; }
@@ -1061,6 +1077,7 @@
     broadcastTick(true);
   }
   function stopTracking() {
+    window.SafloDistanceEvents?.end();
     if (state.watchId != null) navigator.geolocation.clearWatch(state.watchId);
     state.watchId = null; cancelAnimationFrame(state.raf); clearInterval(state.clockTimer); clearInterval(state.demoTimer); stopMotion();
     state.nextMark.remove(); state.nextShown = false;
@@ -1100,7 +1117,7 @@
     state.map.easeTo({ pitch: 45, bearing: 0, zoom: Math.min(state.map.getZoom(), 14.5), duration: 900 });
   }
 
-  function update(pos, heading, now, refreshOnly) {
+  function update(pos, heading, now, refreshOnly, gpsFix) {
     const map = state.map;
     if (!refreshOnly) {
       const moved = state.lastPos ? haversine(state.lastPos, pos) : 0;
@@ -1108,6 +1125,7 @@
       state.lastUpdAt = now;
       if (!state.paused) {
         if (moved < 50) state.dist += moved;
+        window.SafloDistanceEvents?.distance(state.dist, gpsFix);
         if (moved / dt > 0.8) state.lastMoveAt = now;                 // 초속 0.8m 넘게 움직일 때만 '달리는 중'
         const lastT = state.trace[state.trace.length - 1];
         if (!lastT || haversine(lastT, pos) > 3) state.trace.push(pos);
@@ -1346,7 +1364,7 @@
           startMotion(() => { $("stepN").textContent = M.n.toLocaleString(); $("stepCad").textContent = cadence() ?? "–"; });
         });
       }
-      if (phase === "run" && state.nav === "gps") update(pos, heading, performance.now());
+      if (phase === "run" && state.nav === "gps") update(pos, heading, performance.now(), false, p);
     }, (err) => {
       if (phase === "run" && err.code !== 1) return toast("GPS 신호가 약해요. 계속 찾는 중…", 2500);
       if (err.code === 1) permSheet("denied");
