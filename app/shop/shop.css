@@ -23,8 +23,21 @@
 .sp-bal b { font-size: 22px; font-weight: 800; }
 .sp-plus { padding: 8px 12px; border-radius: 12px; background: var(--lime); color: var(--lime-ink); font-weight: 800; font-size: 14px; }
 
-.sp-stage { display: grid; place-items: center; margin: 0 16px 10px; background: var(--card); border-radius: 18px; padding: 8px 0; }
-.sp-preview { width: 140px; height: 170px; display: grid; place-items: center; cursor: pointer; }
+.sp-stage { display: grid; place-items: center; gap: 4px; margin: 0 16px 10px; background: radial-gradient(circle at 50% 40%, var(--card-2), var(--card) 70%);
+  border-radius: 18px; padding: 8px 10px 10px; }
+.sp-preview { width: 180px; height: 220px; display: grid; place-items: center; cursor: grab; user-select: none; -webkit-user-select: none; }
+.sp-preview:active { cursor: grabbing; }
+.sp-preview:focus-visible { outline: 2px solid var(--lime); outline-offset: 2px; border-radius: 12px; }
+.sp-hint { font-size: 12px; color: var(--ink-2); }
+.sp-hint[hidden] { display: none; }
+
+/* 입어보는 중 막대 */
+.sp-fit { display: flex; align-items: center; gap: 6px; width: 100%; }
+.sp-fit[hidden] { display: none; }
+.sp-fit-t { flex: 1; min-width: 0; font-size: 13px; font-weight: 700; color: var(--lime); }
+.sp-fit button { height: 34px; padding: 0 12px; border-radius: 10px; font-size: 13px; font-weight: 800; }
+.sp-fit-reset { background: var(--card-2); color: var(--ink); }
+.sp-fit-apply { background: var(--lime); color: var(--lime-ink); }
 .sp-preview.off::after { content: "3D 미리보기를 불러오지 못했어요"; font-size: 12px; color: var(--ink-2); text-align: center; padding: 0 8px; }
 
 .sp-tabs { display: flex; gap: 6px; padding: 0 16px 10px; overflow-x: auto; scrollbar-width: none; }
@@ -37,8 +50,16 @@
 .sp-empty { grid-column: 1 / -1; text-align: center; color: var(--ink-2); padding: 36px 8px; font-size: 14px; }
 .sp-card { display: flex; flex-direction: column; gap: 2px; background: var(--card); border-radius: 16px; padding: 10px; min-width: 0; }
 .sp-card.on { outline: 2px solid var(--lime); outline-offset: -2px; }
-.sp-img { aspect-ratio: 1; border-radius: 12px; background: var(--card-2); margin-bottom: 6px; overflow: hidden; }   /* 사진이 없으면 빈 칸 */
-.sp-img img { width: 100%; height: 100%; object-fit: cover; display: block; }
+.sp-img { position: relative; display: block; width: 100%; padding: 0; aspect-ratio: 1; border-radius: 12px; margin-bottom: 6px; overflow: hidden; cursor: pointer;
+  background: radial-gradient(circle at 50% 45%, #3a3f48, var(--card-2) 72%); }   /* 사진을 만드는 동안은 빈 칸 */
+.sp-img img { width: 100%; height: 100%; object-fit: cover; display: block; opacity: 0; transition: opacity .25s; }
+.sp-img.ready img { opacity: 1; }
+.sp-try { position: absolute; left: 6px; bottom: 6px; padding: 3px 8px; border-radius: 8px; background: rgba(0,0,0,.55); color: #fff; font-size: 11px; font-weight: 700; }
+.sp-card.trying { outline: 2px dashed var(--lime); outline-offset: -2px; }
+.sp-card.trying .sp-try { background: var(--lime); color: var(--lime-ink); }
+.sp-img:focus-visible { outline: 2px solid var(--lime); outline-offset: 2px; }
+.sp-desc { font-size: 12px; color: var(--ink-2); line-height: 1.35; margin-bottom: 2px; }
+@media (prefers-reduced-motion: reduce) { .sp-img img { transition: none; } }
 .sp-cat { font-size: 11px; }
 .sp-name { font-size: 15px; font-weight: 700; }
 .sp-price { font-size: 13px; color: var(--ink-2); margin-bottom: 6px; }

@@ -2,6 +2,7 @@
 import * as wallet from "./wallet.js";
 import { createAvatar } from "./avatar3d.js";
 import { createShopUI } from "./shop-ui.js";
+import { getThumb } from "./thumbs.js";
 
 /* 지도 위 내 위치(.me)에 3D 아바타 붙이기. 실패하면 기존 아이콘이 그대로 남아요 */
 async function mountMapAvatar(state) {
@@ -24,18 +25,15 @@ async function mountMapAvatar(state) {
   state.avatar = av;
 }
 
-/* 상점 창 안의 큰 미리보기 (처음 열 때 만들어짐) */
+/* 상점 창 안의 큰 미리보기 (처음 열 때 만들어짐). 입는 모습은 shop-ui.js 가 입어보기까지 합쳐서 정해줌 */
 async function createPreview(host) {
   try {
-    const av = await createAvatar(host, { width: 140, height: 170, yaw: 0.5, spin: true });
-    av.setLook(wallet.getEquippedItems());
-    wallet.subscribe(() => av.setLook(wallet.getEquippedItems()));
-    return av;
+    return await createAvatar(host, { width: 180, height: 220, yaw: 0.5, spin: true, dist: 3.9 });
   } catch (e) { console.warn("3D 미리보기를 못 불러왔어요", e); return null; }
 }
 
 export function init(map, state) {
-  createShopUI({ createPreview });
+  createShopUI({ createPreview, getThumb });
   mountMapAvatar(state);
 }
 
